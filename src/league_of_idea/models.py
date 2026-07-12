@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from .rubric import DEFAULT_RUBRIC, Rubric
 from .pricing import PricingTable
 from .usage import BudgetConfig, UsageStats
+from .runtime import RuntimeConfig
 
 
 def _new_id() -> str:
@@ -73,7 +74,7 @@ class Session(BaseModel):
     """A full tournament run — the unit of persistence."""
 
     id: str = Field(default_factory=_new_id)
-    schema_version: int = 4
+    schema_version: int = 5
     status: Literal["running", "completed", "failed", "stopped"] = "running"
     goal: str
     num_ideas: int
@@ -88,6 +89,7 @@ class Session(BaseModel):
     double_judge: bool = False
     dedup_threshold: float = Field(default=0.86, ge=0, le=1)
     max_concurrency: int = Field(default=1, ge=1)
+    runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     k: float = 32.0
     evolve: bool = True
     evolve_top: int = 2

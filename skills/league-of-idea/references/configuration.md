@@ -24,6 +24,9 @@ Model identifiers use `provider:model`. Availability depends on the user's provi
 | Dedup threshold | 0.86 |
 | Judge concurrency | 1 |
 | Double judge | off |
+| Request timeout | 60 seconds |
+| Transient retries | 2 |
+| Provider rate limit | unlimited |
 
 The default 8-idea, 3-round Swiss run has a minimum plan of 20 LLM calls. Retries can add calls.
 
@@ -71,6 +74,13 @@ Criterion names must be unique lowercase identifiers. Weights must be positive. 
 ```
 
 Replace example rates with verified current provider prices. Include every generator and judge model when using `--max-cost-usd`.
+
+## Runtime reliability
+
+- `--timeout-seconds`: deadline passed to the provider SDK for each attempt.
+- `--max-retries`: exponential-backoff retries for throttling, timeout, connection, and upstream failures. Authentication and invalid requests fail immediately.
+- `--requests-per-second`: shared per-provider pacing across concurrent judge workers.
+- The runtime settings are persisted and can be changed with the same options on `resume`.
 
 ## Budget semantics
 

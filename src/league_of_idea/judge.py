@@ -12,6 +12,7 @@ from . import llm
 from .models import Idea, MatchResult
 from .rubric import DEFAULT_RUBRIC, Rubric
 from .usage import UsageRecorder
+from .runtime import RuntimeController
 
 JUDGE_SYSTEM = (
     "You are a rigorous, impartial research reviewer. You compare two ideas and "
@@ -58,15 +59,16 @@ def judge_match(
     rubric: Rubric = DEFAULT_RUBRIC,
     usage_tracker: UsageRecorder | None = None,
     bidirectional: bool = False,
+    runtime: RuntimeController | None = None,
 ) -> MatchResult:
     """Judge a match once or in both A/B orientations."""
     if bidirectional and usage_tracker is not None:
         usage_tracker.ensure_calls_available(2)
-    forward = _evaluate_once(goal, idea_a, idea_b, model, rubric, usage_tracker)
+    forward = _evaluate_once(goal, idea_a, idea_b, model, rubric, usage_tracker, runtime)
     if not bidirectional:
         return forward
 
-    reverse = _evaluate_once(goal, idea_b, idea_a, model, rubric, usage_tracker)
+    reverse = _evaluate_once(goal, idea_b, idea_a, model, rubric, usage_tracker, runtime)
     reverse_in_original_order = MatchResult(
         winner={"A": "B", "B": "A", "draw": "draw"}[reverse.winner],
         reasoning=reverse.reasoning,
@@ -103,6 +105,7 @@ def _evaluate_once(
     model: str,
     rubric: Rubric,
     usage_tracker: UsageRecorder | None,
+    runtime: RuntimeController | None = None,
 ) -> MatchResult:
     criteria = "\n".join(
         f"- {item.name} (weight {item.weight:g}): {item.description}"
@@ -117,7 +120,8 @@ def _evaluate_once(
         score_example=score_example,
     )
     data = llm.complete_json(
-        model, prompt, system=JUDGE_SYSTEM, usage_tracker=usage_tracker
+        model, prompt, system=JUDGE_SYSTEM, usage_tracker=usage_tracker,
+        runtime=runtime,
     )
     try:
         raw = _RawEvaluation.model_validate(data)

@@ -16,6 +16,7 @@ import re
 import time
 from typing import Any
 
+from .runtime import RuntimeConfig, RuntimeController
 from .usage import UsageRecorder
 
 
@@ -41,12 +42,19 @@ def complete(
     *,
     system: str | None = None,
     temperature: float = 0.8,
-    max_retries: int = 2,
+    max_retries: int | None = None,
+    runtime: RuntimeController | None = None,
     usage_tracker: UsageRecorder | None = None,
 ) -> str:
     """Return the model's text completion for a single prompt."""
     completion = _load_any_llm()
     provider, model_id = _split_model_ref(model)
+    runtime = runtime or RuntimeController(RuntimeConfig())
+    if max_retries is not None:
+        values = runtime.config.model_dump()
+        values["max_retries"] = max_retries
+        config = RuntimeConfig.model_validate(values)
+        runtime = RuntimeController(config)
     messages: list[dict[str, str]] = []
     if system:
         messages.append({"role": "system", "content": system})
@@ -54,20 +62,22 @@ def complete(
     if usage_tracker is not None:
         usage_tracker.before_call()
 
-    for attempt in range(max_retries + 1):
+    for attempt in range(runtime.config.max_retries + 1):
         try:
+            runtime.wait(provider)
             resp = completion(
                 model=model_id,
                 provider=provider,
                 messages=messages,
                 temperature=temperature,
+                timeout=runtime.config.request_timeout_seconds,
             )
             break
         except Exception as exc:  # pragma: no cover - network/provider errors
-            if attempt >= max_retries:
+            if attempt >= runtime.config.max_retries or not _is_retryable(exc):
                 raise LLMError(
                     f"LLM call failed for model {model!r} after "
-                    f"{max_retries + 1} attempts: {exc}"
+                    f"{attempt + 1} attempt(s): {exc}"
                 ) from exc
             time.sleep(2**attempt)
 
@@ -129,6 +139,7 @@ def complete_json(
     system: str | None = None,
     temperature: float = 0.3,
     usage_tracker: UsageRecorder | None = None,
+    runtime: RuntimeController | None = None,
 ) -> Any:
     """Call the model and parse its reply as JSON.
 
@@ -141,8 +152,24 @@ def complete_json(
         system=system,
         temperature=temperature,
         usage_tracker=usage_tracker,
+        runtime=runtime,
     )
     return _parse_json(text)
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Retry network, throttling and upstream failures; fail fast otherwise."""
+    retryable_names = {
+        "RateLimitError",
+        "ProviderError",
+        "UpstreamProviderError",
+        "GatewayTimeoutError",
+        "APITimeoutError",
+        "APIConnectionError",
+    }
+    return isinstance(exc, (TimeoutError, ConnectionError, OSError)) or any(
+        cls.__name__ in retryable_names for cls in type(exc).__mro__
+    )
 
 
 def _parse_json(text: str) -> Any:

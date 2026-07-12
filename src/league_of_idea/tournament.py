@@ -12,6 +12,7 @@ from . import elo, generator, judge, pairing, storage
 from .models import Idea, Match, Session
 from .pricing import PricingTable
 from .rubric import DEFAULT_RUBRIC, Rubric
+from .runtime import RuntimeConfig, RuntimeController
 from .usage import (
     BudgetConfig,
     BudgetExceeded,
@@ -41,6 +42,7 @@ def run_tournament(
     double_judge: bool = False,
     dedup_threshold: float = 0.86,
     max_concurrency: int = 1,
+    runtime: RuntimeConfig | None = None,
     pairing_strategy: str = "swiss",
     k: float = elo.DEFAULT_K,
     evolve: bool = True,
@@ -62,6 +64,8 @@ def run_tournament(
     )
     selected_budget = budget or BudgetConfig()
     selected_pricing = pricing or PricingTable()
+    selected_runtime = runtime or RuntimeConfig()
+    runtime_controller = RuntimeController(selected_runtime)
     if max_concurrency > 1 and (
         selected_budget.max_tokens is not None
         or selected_budget.max_cost_usd is not None
@@ -90,6 +94,7 @@ def run_tournament(
         generator_model,
         usage_tracker=usage_tracker,
         dedup_threshold=dedup_threshold,
+        runtime=runtime_controller,
     )
     session = Session(
         goal=goal,
@@ -105,6 +110,7 @@ def run_tournament(
         double_judge=double_judge,
         dedup_threshold=dedup_threshold,
         max_concurrency=max_concurrency,
+        runtime=selected_runtime,
         k=k,
         evolve=evolve,
         evolve_top=evolve_top,
@@ -112,7 +118,7 @@ def run_tournament(
         ideas=ideas,
     )
     storage.save_session(session, base_dir)
-    return _continue_tournament(session, base_dir, progress)
+    return _continue_tournament(session, base_dir, progress, runtime_controller)
 
 
 def resume_tournament(
@@ -121,6 +127,7 @@ def resume_tournament(
     base_dir: Path = storage.DEFAULT_DIR,
     budget_override: BudgetConfig | None = None,
     concurrency_override: int | None = None,
+    runtime_override: RuntimeConfig | None = None,
     progress: ProgressFn = _noop,
 ) -> Session:
     """Continue a failed or budget-stopped session without duplicate scoring."""
@@ -133,6 +140,8 @@ def resume_tournament(
         if concurrency_override < 1:
             raise ValueError("concurrency must be at least 1.")
         session.max_concurrency = concurrency_override
+    if runtime_override is not None:
+        session.runtime = runtime_override
     if session.max_concurrency > 1 and (
         session.budget.max_tokens is not None
         or session.budget.max_cost_usd is not None
@@ -151,8 +160,10 @@ def _continue_tournament(
     session: Session,
     base_dir: Path,
     progress: ProgressFn,
+    runtime_controller: RuntimeController | None = None,
 ) -> Session:
     usage_tracker = UsageTracker(session.budget, session.usage, session.pricing)
+    runtime_controller = runtime_controller or RuntimeController(session.runtime)
 
     try:
         for rnd in range(session.completed_rounds + 1, session.rounds + 1):
@@ -168,6 +179,7 @@ def _continue_tournament(
                 rng,
                 base_dir,
                 usage_tracker,
+                runtime_controller,
             )
 
             if session.evolve and rnd < session.rounds:
@@ -180,6 +192,7 @@ def _continue_tournament(
                     usage_tracker,
                     base_dir,
                     rnd,
+                    runtime_controller,
                 )
             session.completed_rounds = rnd
             storage.save_session(session, base_dir)
@@ -217,6 +230,7 @@ def _play_round(
     rng: random.Random,
     base_dir: Path,
     usage_tracker: UsageTracker,
+    runtime: RuntimeController,
 ) -> None:
     if rnd not in session.pairing_plans:
         eligible_ideas = [idea for idea in session.ideas if idea.created_in_round < rnd]
@@ -274,6 +288,7 @@ def _play_round(
         judge_model,
         usage_tracker,
         base_dir,
+        runtime,
     )
 
     played = 0
@@ -304,6 +319,7 @@ def _evaluate_matches(
     judge_model: str,
     usage_tracker: UsageTracker,
     base_dir: Path,
+    runtime: RuntimeController,
 ) -> None:
     calls_per_match = 2 if session.double_judge else 1
     budget_error: BudgetExceeded | None = None
@@ -325,6 +341,7 @@ def _evaluate_matches(
                     idea_b,
                     judge_model,
                     reservation,
+                    runtime,
                 )
                 futures[future] = (key, reservation)
 
@@ -351,6 +368,7 @@ def _judge_reserved(
     idea_b: Idea,
     judge_model: str,
     reservation: UsageReservation,
+    runtime: RuntimeController,
 ) -> MatchResult:
     try:
         return judge.judge_match(
@@ -361,6 +379,7 @@ def _judge_reserved(
             session.rubric,
             reservation,
             session.double_judge,
+            runtime,
         )
     finally:
         reservation.release()
@@ -420,6 +439,7 @@ def _evolve_round(
     usage_tracker: UsageTracker,
     base_dir: Path,
     rnd: int,
+    runtime: RuntimeController,
 ) -> None:
     if rnd not in session.evolution_plans:
         session.evolution_plans[rnd] = [
@@ -445,6 +465,7 @@ def _evolve_round(
             created_in_round=rnd,
             existing_contents=[idea.content for idea in session.ideas],
             dedup_threshold=session.dedup_threshold,
+            runtime=runtime,
         )
         children.append(child)
         session.ideas.append(child)

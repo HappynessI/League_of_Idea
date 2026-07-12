@@ -16,6 +16,7 @@ def _deterministic_judge(
     rubric,
     usage_tracker,
     bidirectional=False,
+    runtime=None,
 ):
     usage_tracker.before_call()
     usage_tracker.record(1, 1)
@@ -34,6 +35,7 @@ def test_concurrent_judges_overlap(monkeypatch, tmp_path):
         rubric,
         usage_tracker,
         bidirectional=False,
+        runtime=None,
     ):
         barrier.wait(timeout=2)
         return _deterministic_judge(

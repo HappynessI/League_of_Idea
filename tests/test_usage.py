@@ -24,7 +24,7 @@ def test_tournament_returns_partial_session_when_budget_is_reached(monkeypatch, 
         return [Idea(content=f"idea {index}") for index in range(n)]
 
     def judge(
-        goal, idea_a, idea_b, model, rubric, usage_tracker, bidirectional=False
+        goal, idea_a, idea_b, model, rubric, usage_tracker, bidirectional=False, runtime=None
     ):
         usage_tracker.before_call()
         usage_tracker.record(20, 5)
@@ -75,7 +75,7 @@ def test_resume_does_not_pair_partially_evolved_children_in_previous_round(
         return [Idea(content=f"idea {index}") for index in range(n)]
 
     def judge(
-        goal, idea_a, idea_b, model, rubric, usage_tracker, bidirectional=False
+        goal, idea_a, idea_b, model, rubric, usage_tracker, bidirectional=False, runtime=None
     ):
         record(usage_tracker)
         return MatchResult(winner="A")

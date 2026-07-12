@@ -8,6 +8,7 @@ from __future__ import annotations
 from . import dedup, llm
 from .models import Idea
 from .usage import UsageRecorder
+from .runtime import RuntimeController
 
 GENERATE_SYSTEM = (
     "You are a creative research strategist. You produce concrete, distinct, "
@@ -53,6 +54,7 @@ def generate_ideas(
     usage_tracker: UsageRecorder | None = None,
     dedup_threshold: float = 0.86,
     max_attempts: int = 3,
+    runtime: RuntimeController | None = None,
 ) -> list[Idea]:
     """Generate ``n`` first-generation ideas for ``goal``."""
     contents: list[str] = []
@@ -67,7 +69,8 @@ def generate_ideas(
             avoid=avoid,
         )
         data = llm.complete_json(
-            model, prompt, system=GENERATE_SYSTEM, usage_tracker=usage_tracker
+            model, prompt, system=GENERATE_SYSTEM, usage_tracker=usage_tracker,
+            runtime=runtime,
         )
         if not isinstance(data, list):
             raise llm.LLMError(f"Expected a JSON array of ideas, got: {data!r}")
@@ -102,6 +105,7 @@ def evolve_idea(
     existing_contents: list[str] | None = None,
     dedup_threshold: float = 0.86,
     max_attempts: int = 3,
+    runtime: RuntimeController | None = None,
 ) -> Idea:
     """Produce one improved child idea from ``parent``."""
     existing = list(existing_contents or [])
@@ -114,7 +118,8 @@ def evolve_idea(
             avoid=_avoid_instruction(existing),
         )
         data = llm.complete_json(
-            model, prompt, system=EVOLVE_SYSTEM, usage_tracker=usage_tracker
+            model, prompt, system=EVOLVE_SYSTEM, usage_tracker=usage_tracker,
+            runtime=runtime,
         )
         if not isinstance(data, str) or not data.strip():
             raise llm.LLMError(

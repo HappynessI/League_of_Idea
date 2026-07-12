@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .models import Session
+from .analysis import creator_attribution
 
 DEFAULT_REPORT_DIR = Path(".loi_reports")
 
@@ -36,6 +37,9 @@ def render_markdown(session: Session) -> str:
         f"| Rubric | {_cell(session.rubric.version)} |",
         f"| Double judge | {session.double_judge} |",
         f"| Judge concurrency | {session.max_concurrency} |",
+        f"| Request timeout | {session.runtime.request_timeout_seconds:g}s |",
+        f"| Max retries | {session.runtime.max_retries} |",
+        f"| Provider rate | {session.runtime.requests_per_second or 'unlimited'} req/s |",
         f"| Pending evaluated matches | {len(session.pending_results)} |",
         f"| Usage | {session.usage.calls} calls; {session.usage.total_tokens} tokens; "
         f"${session.usage.estimated_cost_usd:.4f}; "
@@ -54,6 +58,17 @@ def render_markdown(session: Session) -> str:
             f"| {rank} | {idea.id} | {idea.elo:.1f} | "
             f"{idea.wins}-{idea.draws}-{idea.losses} | {idea.generation} | "
             f"{idea.parent_id or '—'} | {_cell(idea.content)} |"
+        )
+
+    lines.extend([
+        "", "## Creator attribution", "",
+        "| Model | Ideas | Average Elo | Best Elo | W-D-L |",
+        "|---|---:|---:|---:|---:|",
+    ])
+    for row in creator_attribution(session):
+        lines.append(
+            f"| {_cell(row.model)} | {row.ideas} | {row.average_elo:.1f} | "
+            f"{row.best_elo:.1f} | {row.wins}-{row.draws}-{row.losses} |"
         )
 
     lines.extend(

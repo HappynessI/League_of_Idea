@@ -1,7 +1,7 @@
 # League of Idea 🏟️
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
-![Version](https://img.shields.io/badge/version-0.4.0-2ea44f)
+![Version](https://img.shields.io/badge/version-0.5.0-2ea44f)
 ![Tests](https://img.shields.io/badge/tests-46%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
@@ -11,7 +11,7 @@
 
 **League of Idea**（`loi`）是一个面向研究、产品和开放式问题的命令行工具。它从目标出发生成候选 idea，通过版本化评分规则让 LLM 进行成对比较，以 Elo 量化相对质量，并将高分 idea 进化到下一轮。
 
-当前版本为 **v0.4.0 可用 MVP**。已支持瑞士轮、双向裁判、受控并发、预算保护、中断续跑和 Markdown 审计报告。
+当前版本为 **v0.5.0 可用 MVP**。已支持瑞士轮、双向裁判、受控并发、预算保护、中断续跑、provider 级限流和模型归因报告。
 
 ## 核心能力
 
@@ -127,6 +127,7 @@ loi list
 | `loi resume` | 继续失败或预算停止的 Session |
 | `loi rank` | 查看已保存的排行榜 |
 | `loi report` | 导出 Markdown 审计报告 |
+| `loi analyze` | 按 idea 创建模型对比平均/最佳 Elo 与战绩 |
 | `loi list` | 列出本地 Session |
 
 `loi run` 的主要选项：
@@ -138,6 +139,9 @@ loi list
 | `--pairing` | `swiss` | `swiss` / `random` / `round-robin` |
 | `--double-judge` | 关闭 | 对调 A/B 后再次裁判 |
 | `--concurrency` | `1` | 最大并发裁判比赛数 |
+| `--timeout-seconds` | `60` | 单次 provider 请求超时 |
+| `--max-retries` | `2` | 仅对限流、网络和上游故障重试 |
+| `--requests-per-second` | 无限制 | 每个 provider 的共享请求速率上限 |
 | `--evolve-top` | `2` | 每轮进化的高分 idea 数 |
 | `--no-evolve` | 关闭 | 禁止进化，仅做排名 |
 | `--rubric-file` | 内置规则 | 自定义版本化评分规则 |
@@ -253,14 +257,16 @@ src/league_of_idea/
 ├── dedup.py        # 本地近重复检测
 ├── usage.py        # 调用/token 预算与并发额度预留
 ├── pricing.py      # 版本化费率与金额估算
+├── runtime.py      # 超时、可恢复重试与 provider 限流
+├── analysis.py     # 创建模型表现归因
 ├── storage.py      # 原子 JSON 持久化
 └── report.py       # Markdown 审计报告
 ```
 
 ## 路线图
 
-- [ ] 可配置请求超时、重试和 provider 级限流
-- [ ] 多模型生成归因与对比视图
+- [x] 可配置请求超时、重试和 provider 级限流
+- [x] 多模型生成归因与对比视图
 - [ ] SQLite 存储与 schema migration
 - [ ] 使用真实 provider 的可选冒烟测试
 - [ ] Web / 图形界面（终端版本稳定之后）

@@ -38,6 +38,7 @@ Preserve the user's goal verbatim unless they ask for rewriting. Use the current
 - evolution enabled
 - single-direction judging
 - concurrency 1
+- 60-second request timeout and 2 transient-error retries
 
 Estimate before making paid calls:
 
@@ -65,6 +66,7 @@ Capture and report the Session id, status, calls, token usage, estimated cost wh
 
 - Add `--double-judge` when position bias matters. It evaluates both A/B orientations and records disagreement as a disputed draw.
 - Add `--concurrency N` for faster judging when using `--max-calls` or no budget.
+- Add `--requests-per-second N` when a provider needs client-side pacing. Use `--timeout-seconds` and `--max-retries` for slow or unstable networks.
 - Keep `--concurrency 1` with `--max-tokens` or `--max-cost-usd`; the CLI rejects unsafe parallel token/cost budgets.
 - Use `--pairing round-robin` only for small fields or when complete pairwise coverage justifies quadratic cost.
 - Use `--no-evolve` when the task is only to rank a fixed candidate set.
@@ -80,6 +82,7 @@ List and inspect saved work without contacting an LLM:
 ```bash
 python3 "$SKILL_DIR/scripts/loi.py" list
 python3 "$SKILL_DIR/scripts/loi.py" rank --session <session_id>
+python3 "$SKILL_DIR/scripts/loi.py" analyze --session <session_id>
 ```
 
 Resume a `failed` or `stopped` Session. Budget overrides are total lifetime limits, not additional allowances, so raise them above existing usage:
@@ -102,7 +105,7 @@ python3 "$SKILL_DIR/scripts/loi.py" report \
   --output <report.md>
 ```
 
-Return the report path plus a concise summary of the winner, runner-up, disputed matches, usage, and stop reason if incomplete.
+Return the report path plus a concise summary of the winner, runner-up, creator-model attribution, disputed matches, usage, and stop reason if incomplete.
 
 Read [references/workflows.md](references/workflows.md) for ready-to-run task patterns and failure recovery.
 

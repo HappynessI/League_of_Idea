@@ -11,11 +11,13 @@ from rich.table import Table
 
 from . import report as report_module
 from . import storage, tournament
+from .analysis import creator_attribution
 from .llm import LLMError
 from .models import Session
 from .pricing import load_pricing
 from .rubric import load_rubric
 from .usage import BudgetConfig
+from .runtime import RuntimeConfig
 
 app = typer.Typer(
     add_completion=False,
@@ -85,6 +87,15 @@ def run(
     concurrency: int = typer.Option(
         1, "--concurrency", "-c", help="Maximum concurrent judge matches."
     ),
+    timeout_seconds: float = typer.Option(
+        60.0, "--timeout-seconds", help="Timeout for each provider request."
+    ),
+    max_retries: int = typer.Option(
+        2, "--max-retries", help="Retries for transient provider failures."
+    ),
+    requests_per_second: float | None = typer.Option(
+        None, "--requests-per-second", help="Per-provider request rate limit."
+    ),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where to store session JSON."
     ),
@@ -121,6 +132,11 @@ def run(
                 double_judge=double_judge,
                 dedup_threshold=dedup_threshold,
                 max_concurrency=concurrency,
+                runtime=RuntimeConfig(
+                    request_timeout_seconds=timeout_seconds,
+                    max_retries=max_retries,
+                    requests_per_second=requests_per_second,
+                ),
                 pairing_strategy=pairing,
                 k=k,
                 evolve=not no_evolve,
@@ -174,6 +190,9 @@ def resume(
     concurrency: int | None = typer.Option(
         None, "--concurrency", "-c", help="Optional new judge concurrency."
     ),
+    timeout_seconds: float | None = typer.Option(None, "--timeout-seconds"),
+    max_retries: int | None = typer.Option(None, "--max-retries"),
+    requests_per_second: float | None = typer.Option(None, "--requests-per-second"),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where session JSON is stored."
     ),
@@ -192,12 +211,35 @@ def resume(
                     else loaded.budget.max_cost_usd
                 ),
             )
+        runtime_override = None
+        if any(
+            value is not None
+            for value in (timeout_seconds, max_retries, requests_per_second)
+        ):
+            runtime_override = RuntimeConfig(
+                request_timeout_seconds=(
+                    timeout_seconds
+                    if timeout_seconds is not None
+                    else loaded.runtime.request_timeout_seconds
+                ),
+                max_retries=(
+                    max_retries
+                    if max_retries is not None
+                    else loaded.runtime.max_retries
+                ),
+                requests_per_second=(
+                    requests_per_second
+                    if requests_per_second is not None
+                    else loaded.runtime.requests_per_second
+                ),
+            )
         with console.status("[bold]Resuming tournament...[/bold]", spinner="dots"):
             resumed = tournament.resume_tournament(
                 session,
                 base_dir=sessions_dir,
                 budget_override=budget_override,
                 concurrency_override=concurrency,
+                runtime_override=runtime_override,
                 progress=lambda msg: console.log(msg),
             )
     except (LLMError, OSError, ValueError) as exc:
@@ -256,6 +298,32 @@ def report(
         console.print(f"[bold red]Report failed:[/bold red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print(f"Report written to [bold cyan]{path}[/bold cyan]")
+
+
+@app.command()
+def analyze(
+    session: str = typer.Option(..., "--session", "-s", help="Session id to analyze."),
+    sessions_dir: Path = typer.Option(storage.DEFAULT_DIR, "--sessions-dir"),
+) -> None:
+    """Compare idea performance by creator model."""
+    try:
+        loaded = storage.load_session(session, sessions_dir)
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(code=1) from exc
+    table = Table(title=f"Creator attribution — session {loaded.id}")
+    columns = (
+        ("Model", "left"), ("Ideas", "right"), ("Avg Elo", "right"),
+        ("Best Elo", "right"), ("W-D-L", "right"),
+    )
+    for name, justify in columns:
+        table.add_column(name, justify=justify)
+    for row in creator_attribution(loaded):
+        table.add_row(
+            row.model, str(row.ideas), f"{row.average_elo:.1f}",
+            f"{row.best_elo:.1f}", f"{row.wins}-{row.draws}-{row.losses}",
+        )
+    console.print(table)
 
 
 @app.command(name="list")
