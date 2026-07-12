@@ -1,0 +1,4 @@
+interface:
+  display_name: "League of Idea"
+  short_description: "Generate, rank, evolve, and audit ideas with LLM tournaments"
+  default_prompt: "Use $league-of-idea to run a cost-controlled idea tournament and export the ranked report."

@@ -5,6 +5,8 @@
 ![Tests](https://img.shields.io/badge/tests-46%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
+![League of Idea — LLM idea tournament poster](assets/league-of-idea-poster.png)
+
 > 让候选想法在 LLM 竞技场中对战，用 Elo 排名，并持续进化出更好的方案。
 
 **League of Idea**（`loi`）是一个面向研究、产品和开放式问题的命令行工具。它从目标出发生成候选 idea，通过版本化评分规则让 LLM 进行成对比较，以 Elo 量化相对质量，并将高分 idea 进化到下一轮。
@@ -192,6 +194,39 @@ loi run \
 ```
 
 密钥从环境变量或 `.env` 读取。`.env` 已加入 `.gitignore`，不要把真实密钥提交到版本库。
+
+## Codex Skill
+
+仓库内置了开箱即用的 Codex Skill：[skills/league-of-idea](skills/league-of-idea)。它会指导 Codex 完成环境检查、调用量预估、预算安全运行、失败续跑和报告导出，并始终复用项目 CLI。
+
+在 macOS / Linux 中推荐使用软链接安装，这样 Skill 会随仓库更新：
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+ln -s "$(pwd)/skills/league-of-idea" \
+  "${CODEX_HOME:-$HOME/.codex}/skills/league-of-idea"
+```
+
+也可以复制安装：
+
+```bash
+cp -R skills/league-of-idea "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+随后在 Codex 中调用：
+
+```text
+Use $league-of-idea to run a cost-controlled idea tournament for:
+如何提高小模型代理的长程任务成功率
+```
+
+单独检查环境，不会发起模型请求：
+
+```bash
+python3 skills/league-of-idea/scripts/loi.py doctor
+```
+
+如果复制后的 Skill 无法自动定位仓库，设置 `LEAGUE_OF_IDEA_ROOT` 为本项目根目录；也可以用 `LOI_BIN` 指定已安装的 `loi` 可执行文件。
 
 ## 开发
 
