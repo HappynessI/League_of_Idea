@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from . import dedup, llm
 from .models import Idea
-from .usage import UsageTracker
+from .usage import UsageRecorder
 
 GENERATE_SYSTEM = (
     "You are a creative research strategist. You produce concrete, distinct, "
@@ -50,7 +50,7 @@ def generate_ideas(
     goal: str,
     n: int,
     model: str,
-    usage_tracker: UsageTracker | None = None,
+    usage_tracker: UsageRecorder | None = None,
     dedup_threshold: float = 0.86,
     max_attempts: int = 3,
 ) -> list[Idea]:
@@ -97,7 +97,7 @@ def evolve_idea(
     goal: str,
     parent: Idea,
     model: str,
-    usage_tracker: UsageTracker | None = None,
+    usage_tracker: UsageRecorder | None = None,
     created_in_round: int = 0,
     existing_contents: list[str] | None = None,
     dedup_threshold: float = 0.86,

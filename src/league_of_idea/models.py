@@ -73,7 +73,7 @@ class Session(BaseModel):
     """A full tournament run — the unit of persistence."""
 
     id: str = Field(default_factory=_new_id)
-    schema_version: int = 3
+    schema_version: int = 4
     status: Literal["running", "completed", "failed", "stopped"] = "running"
     goal: str
     num_ideas: int
@@ -87,12 +87,14 @@ class Session(BaseModel):
     pairing_strategy: str = "swiss"
     double_judge: bool = False
     dedup_threshold: float = Field(default=0.86, ge=0, le=1)
+    max_concurrency: int = Field(default=1, ge=1)
     k: float = 32.0
     evolve: bool = True
     evolve_top: int = 2
     seed: int | None = None
     completed_rounds: int = 0
     pairing_plans: dict[int, list[tuple[str, str]]] = Field(default_factory=dict)
+    pending_results: dict[str, MatchResult] = Field(default_factory=dict)
     evolution_plans: dict[int, list[str]] = Field(default_factory=dict)
     error: str | None = None
     created_at: datetime = Field(default_factory=_now)

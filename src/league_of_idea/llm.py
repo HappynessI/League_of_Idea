@@ -16,7 +16,7 @@ import re
 import time
 from typing import Any
 
-from .usage import UsageTracker
+from .usage import UsageRecorder
 
 
 class LLMError(RuntimeError):
@@ -42,7 +42,7 @@ def complete(
     system: str | None = None,
     temperature: float = 0.8,
     max_retries: int = 2,
-    usage_tracker: UsageTracker | None = None,
+    usage_tracker: UsageRecorder | None = None,
 ) -> str:
     """Return the model's text completion for a single prompt."""
     completion = _load_any_llm()
@@ -128,7 +128,7 @@ def complete_json(
     *,
     system: str | None = None,
     temperature: float = 0.3,
-    usage_tracker: UsageTracker | None = None,
+    usage_tracker: UsageRecorder | None = None,
 ) -> Any:
     """Call the model and parse its reply as JSON.
 

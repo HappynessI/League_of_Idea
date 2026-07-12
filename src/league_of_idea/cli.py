@@ -82,6 +82,9 @@ def run(
     dedup_threshold: float = typer.Option(
         0.86, "--dedup-threshold", help="Near-duplicate similarity threshold from 0 to 1."
     ),
+    concurrency: int = typer.Option(
+        1, "--concurrency", "-c", help="Maximum concurrent judge matches."
+    ),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where to store session JSON."
     ),
@@ -117,6 +120,7 @@ def run(
                 pricing=selected_pricing,
                 double_judge=double_judge,
                 dedup_threshold=dedup_threshold,
+                max_concurrency=concurrency,
                 pairing_strategy=pairing,
                 k=k,
                 evolve=not no_evolve,
@@ -167,6 +171,9 @@ def resume(
     max_cost_usd: float | None = typer.Option(
         None, "--max-cost-usd", help="Optional new total cost budget in USD."
     ),
+    concurrency: int | None = typer.Option(
+        None, "--concurrency", "-c", help="Optional new judge concurrency."
+    ),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where session JSON is stored."
     ),
@@ -190,6 +197,7 @@ def resume(
                 session,
                 base_dir=sessions_dir,
                 budget_override=budget_override,
+                concurrency_override=concurrency,
                 progress=lambda msg: console.log(msg),
             )
     except (LLMError, OSError, ValueError) as exc:

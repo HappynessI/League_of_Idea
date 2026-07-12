@@ -40,6 +40,7 @@ def test_tournament_returns_partial_session_when_budget_is_reached(monkeypatch, 
         judge_model="openai:judge",
         generator_model="openai:generator",
         pairing_strategy="random",
+        max_concurrency=2,
         budget=BudgetConfig(max_calls=2),
         base_dir=tmp_path,
         seed=1,
@@ -47,7 +48,8 @@ def test_tournament_returns_partial_session_when_budget_is_reached(monkeypatch, 
 
     assert session.status == "stopped"
     assert session.usage.calls == 2
-    assert len(session.matches) == 1
+    assert len(session.matches) == 0
+    assert len(session.pending_results) == 1
 
     resumed = tournament.resume_tournament(
         session.id,
@@ -58,6 +60,7 @@ def test_tournament_returns_partial_session_when_budget_is_reached(monkeypatch, 
     assert resumed.status == "completed"
     assert resumed.usage.calls == 4
     assert len(resumed.matches) == 3
+    assert resumed.pending_results == {}
 
 
 def test_resume_does_not_pair_partially_evolved_children_in_previous_round(

@@ -6,7 +6,7 @@
 
 它借鉴了 _Towards an AI Co-Scientist_（Google, 2025）中提出的 Elo 评分与"想法竞赛"机制：让多个候选 idea 通过两两对战，由大语言模型担任裁判判定优劣，用 Elo 分数量化每个 idea 的相对质量，并（可选地）让高分 idea 不断进化产生改进版本，最终输出一份按质量排序的 idea 排行榜。
 
-> ⚠️ **项目状态：可用 MVP（v0.3.0）。** 已支持瑞士轮、双向裁判、近重复检测、预算保护、失败续跑和审计报告，尚未在真实大规模场景下打磨。
+> ⚠️ **项目状态：可用 MVP（v0.4.0）。** 已支持瑞士轮、双向裁判、受控并发、近重复检测、预算保护、失败续跑和审计报告，尚未在真实大规模场景下打磨。
 
 ---
 
@@ -81,6 +81,9 @@ loi run -g "..." --rubric-file rubric.example.json --max-calls 40
 # 双向裁判：交换 A/B 后再评一次，分歧按争议平局处理
 loi run -g "..." --double-judge --max-calls 40
 
+# 最多同时执行 4 场裁判；计分顺序仍保持确定
+loi run -g "..." --concurrency 4 --max-calls 40
+
 # 按自行核对的 provider 定价统计金额并设置上限
 loi run -g "..." --pricing-file pricing.example.json --max-cost-usd 2
 
@@ -118,8 +121,11 @@ loi list
 | `--dedup-threshold` | 近重复相似度阈值 | `0.86` |
 | `--pricing-file` | 自行维护的版本化模型定价 JSON | 不计金额 |
 | `--max-cost-usd` | 估算金额上限 | 无限制 |
+| `--concurrency` / `-c` | 同时执行的裁判比赛数 | `1` |
 
 `pricing.example.json` 中的数字只是格式示例，不代表当前真实价格。使用金额预算前必须根据 provider 官方价格更新费率和版本字段。
+
+并发模式会先预留调用次数，将完成的裁判结果写入 pending cache，再按持久化赛程顺序更新 Elo。因此并发完成顺序不会改变排名。为防止多个在途请求同时越过无法预估的 token/金额边界，使用 `--max-tokens` 或 `--max-cost-usd` 时必须保持 `--concurrency 1`；`--max-calls` 支持安全并发。
 
 会话状态以 JSON 形式保存在 `./.loi_sessions/<session_id>.json`。每场付费对战后都会原子保存；若中途失败或预算耗尽，会保留已经完成的结果，并可用 `loi resume` 继续。报告默认写入 `.loi_reports/`。
 
@@ -174,6 +180,7 @@ league-of-idea/
     ├── test_pairing.py     # 瑞士轮与轮空测试
     ├── test_dedup.py       # 近重复检测测试
     ├── test_pricing.py     # 金额估算和预算测试
+    ├── test_concurrency.py # 并发重叠、预算和确定性测试
     ├── test_usage.py       # 预算停止与续跑测试
     ├── test_report.py      # Markdown 报告测试
     └── test_cli.py         # CLI 调用量估算测试
@@ -212,10 +219,10 @@ pytest
 - [x] 双向裁判与争议结果处理
 - [x] 本地近重复检测和缺失候选自动补生成
 - [x] 版本化模型定价、实际 token 金额估算和金额上限
+- [x] 受控并发裁判、调用额度预留、pending result 续跑与确定性计分
 
 ### 🚧 未实现 / 计划中
 
-- [ ] **并发对战**（asyncio 同时跑多场以提速）
 - [ ] **多模型混战的归因分析**（`created_by` 字段已记录，但尚无分析视图）
 - [x] **基础失败重试**（指数退避，默认共尝试 3 次）
 - [ ] 超时、按 provider 限流与可配置重试策略

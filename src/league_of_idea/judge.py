@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from . import llm
 from .models import Idea, MatchResult
 from .rubric import DEFAULT_RUBRIC, Rubric
-from .usage import UsageTracker
+from .usage import UsageRecorder
 
 JUDGE_SYSTEM = (
     "You are a rigorous, impartial research reviewer. You compare two ideas and "
@@ -56,7 +56,7 @@ def judge_match(
     idea_b: Idea,
     model: str,
     rubric: Rubric = DEFAULT_RUBRIC,
-    usage_tracker: UsageTracker | None = None,
+    usage_tracker: UsageRecorder | None = None,
     bidirectional: bool = False,
 ) -> MatchResult:
     """Judge a match once or in both A/B orientations."""
@@ -102,7 +102,7 @@ def _evaluate_once(
     idea_b: Idea,
     model: str,
     rubric: Rubric,
-    usage_tracker: UsageTracker | None,
+    usage_tracker: UsageRecorder | None,
 ) -> MatchResult:
     criteria = "\n".join(
         f"- {item.name} (weight {item.weight:g}): {item.description}"

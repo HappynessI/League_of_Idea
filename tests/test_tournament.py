@@ -103,7 +103,8 @@ def test_failure_preserves_partial_session(monkeypatch, tmp_path):
     saved = load_session(files[0].stem, tmp_path)
     assert saved.status == "failed"
     assert saved.error == "provider unavailable"
-    assert len(saved.matches) == 1
+    assert len(saved.matches) == 0
+    assert len(saved.pending_results) == 1
 
     monkeypatch.setattr(
         tournament.judge,
@@ -114,6 +115,7 @@ def test_failure_preserves_partial_session(monkeypatch, tmp_path):
 
     assert resumed.status == "completed"
     assert len(resumed.matches) == 3
+    assert resumed.pending_results == {}
     unique_pairs = {
         frozenset((match.idea_a_id, match.idea_b_id)) for match in resumed.matches
     }

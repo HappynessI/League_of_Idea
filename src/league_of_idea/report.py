@@ -35,6 +35,8 @@ def render_markdown(session: Session) -> str:
         f"| Judge | {_cell(session.judge_model)} |",
         f"| Rubric | {_cell(session.rubric.version)} |",
         f"| Double judge | {session.double_judge} |",
+        f"| Judge concurrency | {session.max_concurrency} |",
+        f"| Pending evaluated matches | {len(session.pending_results)} |",
         f"| Usage | {session.usage.calls} calls; {session.usage.total_tokens} tokens; "
         f"${session.usage.estimated_cost_usd:.4f}; "
         f"{session.usage.unpriced_calls} unpriced calls |",

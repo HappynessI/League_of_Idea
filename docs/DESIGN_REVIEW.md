@@ -1,6 +1,6 @@
 # League of Idea 设计评审与演进建议
 
-本文记录对初版 PRD 与 v0.3 代码的评审结论。目标是先做成一个可靠、可解释、成本可控的终端工具，再扩展为更完整的 idea 研究系统。
+本文记录对初版 PRD 与 v0.4 代码的评审结论。目标是先做成一个可靠、可解释、成本可控的终端工具，再扩展为更完整的 idea 研究系统。
 
 ## MVP 定义
 
@@ -47,13 +47,13 @@ any-llm 当前推荐 `provider:model`，代码同时兼容旧的 `provider/model
 - `usage.py`：已统计 calls/token，并支持总调用和 token 预算上限；金额估算仍待 provider 定价配置。
 - `report.py`：已输出 Elo、胜负证据、idea 谱系、rubric 与 Markdown 报告。
 
-### P2：v0.3 已完成主体
+### P2：v0.4 已完成
 
 - `pairing.py` 已增加可续跑的瑞士轮，优先相近 Elo 且避免重复对手。
 - `judge.py` 已增加双向裁判；A/B 两次方向不一致时标记争议并按平局计分。
 - `dedup.py` 已增加无需额外 API 的本地近重复检测和补生成。
 - `pricing.py` 已增加版本化费率、金额估算和预算上限。
-- 异步 runner 与 provider 级并发限制仍待实现。并发只改变执行速度，不应改变 tournament 的业务语义。
+- 已增加受控线程并发：调用额度先预留、结果先缓存、Elo 按赛程顺序更新；并发不会改变 tournament 的业务语义。token/金额预算下限制为单并发，避免在途请求造成预算竞态。
 
 ### P3：规模化后再做
 
