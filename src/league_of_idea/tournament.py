@@ -9,6 +9,7 @@ from typing import Callable
 
 from . import elo, generator, judge, pairing, storage
 from .models import Idea, Match, Session
+from .pricing import PricingTable
 from .rubric import DEFAULT_RUBRIC, Rubric
 from .usage import BudgetConfig, BudgetExceeded, UsageStats, UsageTracker
 
@@ -29,7 +30,10 @@ def run_tournament(
     generator_model: str,
     rubric: Rubric = DEFAULT_RUBRIC,
     budget: BudgetConfig | None = None,
-    pairing_strategy: str = "random",
+    pricing: PricingTable | None = None,
+    double_judge: bool = False,
+    dedup_threshold: float = 0.86,
+    pairing_strategy: str = "swiss",
     k: float = elo.DEFAULT_K,
     evolve: bool = True,
     evolve_top: int = 2,
@@ -38,13 +42,31 @@ def run_tournament(
     progress: ProgressFn = _noop,
 ) -> Session:
     """Run a full tournament and return the persisted session."""
-    _validate_options(goal, num_ideas, rounds, pairing_strategy, k, evolve_top)
+    _validate_options(
+        goal, num_ideas, rounds, pairing_strategy, k, evolve_top, dedup_threshold
+    )
     selected_budget = budget or BudgetConfig()
+    selected_pricing = pricing or PricingTable()
+    if selected_budget.max_cost_usd is not None:
+        missing = [
+            model
+            for model in (generator_model, judge_model)
+            if selected_pricing.price_for(model) is None
+        ]
+        if missing:
+            raise ValueError(
+                "A cost budget requires prices for every model; missing: "
+                + ", ".join(missing)
+            )
     usage = UsageStats()
-    usage_tracker = UsageTracker(selected_budget, usage)
+    usage_tracker = UsageTracker(selected_budget, usage, selected_pricing)
     progress(f"Generating {num_ideas} ideas...")
     ideas = generator.generate_ideas(
-        goal, num_ideas, generator_model, usage_tracker=usage_tracker
+        goal,
+        num_ideas,
+        generator_model,
+        usage_tracker=usage_tracker,
+        dedup_threshold=dedup_threshold,
     )
     session = Session(
         goal=goal,
@@ -55,7 +77,10 @@ def run_tournament(
         rubric=rubric.model_copy(deep=True),
         budget=selected_budget,
         usage=usage,
+        pricing=selected_pricing,
         pairing_strategy=pairing_strategy,
+        double_judge=double_judge,
+        dedup_threshold=dedup_threshold,
         k=k,
         evolve=evolve,
         evolve_top=evolve_top,
@@ -90,7 +115,7 @@ def _continue_tournament(
     base_dir: Path,
     progress: ProgressFn,
 ) -> Session:
-    usage_tracker = UsageTracker(session.budget, session.usage)
+    usage_tracker = UsageTracker(session.budget, session.usage, session.pricing)
 
     try:
         for rnd in range(session.completed_rounds + 1, session.rounds + 1):
@@ -156,8 +181,39 @@ def _play_round(
     base_dir: Path,
     usage_tracker: UsageTracker,
 ) -> None:
-    eligible_ideas = [idea for idea in session.ideas if idea.created_in_round < rnd]
-    pairs = pairing.make_pairs(eligible_ideas, pairing_strategy, rng=rng)
+    if rnd not in session.pairing_plans:
+        eligible_ideas = [idea for idea in session.ideas if idea.created_in_round < rnd]
+        previous_pairs = {
+            frozenset((match.idea_a_id, match.idea_b_id))
+            for match in session.matches
+            if match.round < rnd
+        }
+        match_counts = {
+            idea.id: sum(
+                idea.id in (match.idea_a_id, match.idea_b_id)
+                for match in session.matches
+                if match.round < rnd
+            )
+            for idea in eligible_ideas
+        }
+        planned = pairing.make_pairs(
+            eligible_ideas,
+            pairing_strategy,
+            rng=rng,
+            previous_pairs=previous_pairs,
+            match_counts=match_counts,
+        )
+        session.pairing_plans[rnd] = [(a.id, b.id) for a, b in planned]
+        storage.save_session(session, base_dir)
+    pairs: list[tuple[Idea, Idea]] = []
+    for idea_a_id, idea_b_id in session.pairing_plans[rnd]:
+        idea_a = session.get_idea(idea_a_id)
+        idea_b = session.get_idea(idea_b_id)
+        if idea_a is None or idea_b is None:
+            raise ValueError(
+                f"Pairing plan references missing ideas: {idea_a_id}, {idea_b_id}."
+            )
+        pairs.append((idea_a, idea_b))
     completed_pairs = {
         frozenset((match.idea_a_id, match.idea_b_id))
         for match in session.matches
@@ -177,6 +233,7 @@ def _play_round(
             judge_model,
             session.rubric,
             usage_tracker,
+            session.double_judge,
         )
         if result.winner == "draw":
             idea_a.elo, idea_b.elo = elo.update_ratings(
@@ -208,6 +265,8 @@ def _play_round(
                 confidence=result.confidence,
                 rubric_version=session.rubric.version,
                 judge_model=judge_model,
+                disputed=result.disputed,
+                evaluations=result.evaluations,
             )
         )
         played += 1
@@ -248,6 +307,8 @@ def _evolve_round(
             generator_model,
             usage_tracker=usage_tracker,
             created_in_round=rnd,
+            existing_contents=[idea.content for idea in session.ideas],
+            dedup_threshold=session.dedup_threshold,
         )
         children.append(child)
         session.ideas.append(child)
@@ -262,13 +323,22 @@ def estimate_llm_calls(
     *,
     evolve: bool,
     evolve_top: int,
+    double_judge: bool = False,
 ) -> int:
-    """Return the exact call count for the current sequential tournament design."""
-    _validate_options("estimate", num_ideas, rounds, pairing_strategy, 32.0, evolve_top)
+    """Return minimum planned calls; generation retries can increase the total."""
+    _validate_options(
+        "estimate", num_ideas, rounds, pairing_strategy, 32.0, evolve_top, 0.86
+    )
     total = 1  # initial generation call
     idea_count = num_ideas
     for rnd in range(1, rounds + 1):
-        total += math.comb(idea_count, 2) if pairing_strategy == "round-robin" else idea_count
+        if pairing_strategy == "round-robin":
+            matches = math.comb(idea_count, 2)
+        elif pairing_strategy == "swiss":
+            matches = idea_count // 2
+        else:
+            matches = min(idea_count, math.comb(idea_count, 2))
+        total += matches * (2 if double_judge else 1)
         if evolve and rnd < rounds:
             total += min(evolve_top, idea_count)
             idea_count += min(evolve_top, idea_count)
@@ -282,6 +352,7 @@ def _validate_options(
     pairing_strategy: str,
     k: float,
     evolve_top: int,
+    dedup_threshold: float,
 ) -> None:
     if not goal.strip():
         raise ValueError("Goal must not be empty.")
@@ -298,3 +369,5 @@ def _validate_options(
         raise ValueError("k must be a positive finite number.")
     if evolve_top < 1:
         raise ValueError("evolve_top must be at least 1.")
+    if not 0 <= dedup_threshold <= 1:
+        raise ValueError("dedup_threshold must be between 0 and 1.")

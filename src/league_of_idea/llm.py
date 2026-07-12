@@ -73,7 +73,7 @@ def complete(
 
     if usage_tracker is not None:
         prompt_tokens, completion_tokens = _extract_usage(resp)
-        usage_tracker.record(prompt_tokens, completion_tokens)
+        usage_tracker.record(prompt_tokens, completion_tokens, model=model)
     return _extract_text(resp)
 
 

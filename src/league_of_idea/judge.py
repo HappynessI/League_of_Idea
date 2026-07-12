@@ -57,8 +57,53 @@ def judge_match(
     model: str,
     rubric: Rubric = DEFAULT_RUBRIC,
     usage_tracker: UsageTracker | None = None,
+    bidirectional: bool = False,
 ) -> MatchResult:
-    """Judge a single match between two ideas."""
+    """Judge a match once or in both A/B orientations."""
+    if bidirectional and usage_tracker is not None:
+        usage_tracker.ensure_calls_available(2)
+    forward = _evaluate_once(goal, idea_a, idea_b, model, rubric, usage_tracker)
+    if not bidirectional:
+        return forward
+
+    reverse = _evaluate_once(goal, idea_b, idea_a, model, rubric, usage_tracker)
+    reverse_in_original_order = MatchResult(
+        winner={"A": "B", "B": "A", "draw": "draw"}[reverse.winner],
+        reasoning=reverse.reasoning,
+        scores_a=reverse.scores_b,
+        scores_b=reverse.scores_a,
+        confidence=reverse.confidence,
+    )
+    disputed = forward.winner != reverse_in_original_order.winner
+    scores_a = _average_scores(forward.scores_a, reverse_in_original_order.scores_a)
+    scores_b = _average_scores(forward.scores_b, reverse_in_original_order.scores_b)
+    winner = "draw" if disputed else _winner_from_scores(rubric, scores_a, scores_b)
+    confidences = [
+        value
+        for value in (forward.confidence, reverse_in_original_order.confidence)
+        if value is not None
+    ]
+    return MatchResult(
+        winner=winner,
+        reasoning=(
+            f"Forward: {forward.reasoning} Reverse: {reverse.reasoning}"
+        ),
+        scores_a=scores_a,
+        scores_b=scores_b,
+        confidence=sum(confidences) / len(confidences) if confidences else None,
+        disputed=disputed,
+        evaluations=2,
+    )
+
+
+def _evaluate_once(
+    goal: str,
+    idea_a: Idea,
+    idea_b: Idea,
+    model: str,
+    rubric: Rubric,
+    usage_tracker: UsageTracker | None,
+) -> MatchResult:
     criteria = "\n".join(
         f"- {item.name} (weight {item.weight:g}): {item.description}"
         for item in rubric.criteria
@@ -76,12 +121,9 @@ def judge_match(
     )
     try:
         raw = _RawEvaluation.model_validate(data)
-        total_a = rubric.weighted_total(raw.scores_a)
-        total_b = rubric.weighted_total(raw.scores_b)
+        winner = _winner_from_scores(rubric, raw.scores_a, raw.scores_b)
     except Exception as exc:
         raise llm.LLMError(f"Judge returned malformed result: {data!r} ({exc})") from exc
-    difference = total_a - total_b
-    winner = "draw" if abs(difference) <= rubric.tie_margin else ("A" if difference > 0 else "B")
     return MatchResult(
         winner=winner,
         reasoning=raw.reasoning,
@@ -89,3 +131,20 @@ def judge_match(
         scores_b=raw.scores_b,
         confidence=raw.confidence,
     )
+
+
+def _winner_from_scores(
+    rubric: Rubric,
+    scores_a: dict[str, float],
+    scores_b: dict[str, float],
+) -> str:
+    difference = rubric.weighted_total(scores_a) - rubric.weighted_total(scores_b)
+    if abs(difference) <= rubric.tie_margin:
+        return "draw"
+    return "A" if difference > 0 else "B"
+
+
+def _average_scores(
+    first: dict[str, float], second: dict[str, float]
+) -> dict[str, float]:
+    return {name: (value + second[name]) / 2 for name, value in first.items()}

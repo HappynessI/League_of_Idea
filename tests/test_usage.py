@@ -18,12 +18,14 @@ def test_usage_tracker_stops_before_next_call():
 
 
 def test_tournament_returns_partial_session_when_budget_is_reached(monkeypatch, tmp_path):
-    def generate(goal, n, model, usage_tracker=None):
+    def generate(goal, n, model, usage_tracker=None, **kwargs):
         usage_tracker.before_call()
         usage_tracker.record(10, 5)
         return [Idea(content=f"idea {index}") for index in range(n)]
 
-    def judge(goal, idea_a, idea_b, model, rubric, usage_tracker):
+    def judge(
+        goal, idea_a, idea_b, model, rubric, usage_tracker, bidirectional=False
+    ):
         usage_tracker.before_call()
         usage_tracker.record(20, 5)
         return MatchResult(winner="A")
@@ -37,6 +39,7 @@ def test_tournament_returns_partial_session_when_budget_is_reached(monkeypatch, 
         rounds=1,
         judge_model="openai:judge",
         generator_model="openai:generator",
+        pairing_strategy="random",
         budget=BudgetConfig(max_calls=2),
         base_dir=tmp_path,
         seed=1,
@@ -64,16 +67,18 @@ def test_resume_does_not_pair_partially_evolved_children_in_previous_round(
         tracker.before_call()
         tracker.record(1, 1)
 
-    def generate(goal, n, model, usage_tracker=None):
+    def generate(goal, n, model, usage_tracker=None, **kwargs):
         record(usage_tracker)
         return [Idea(content=f"idea {index}") for index in range(n)]
 
-    def judge(goal, idea_a, idea_b, model, rubric, usage_tracker):
+    def judge(
+        goal, idea_a, idea_b, model, rubric, usage_tracker, bidirectional=False
+    ):
         record(usage_tracker)
         return MatchResult(winner="A")
 
     def evolve(
-        goal, parent, model, usage_tracker=None, created_in_round=0
+        goal, parent, model, usage_tracker=None, created_in_round=0, **kwargs
     ):
         record(usage_tracker)
         return Idea(
@@ -93,6 +98,7 @@ def test_resume_does_not_pair_partially_evolved_children_in_previous_round(
         rounds=2,
         judge_model="openai:judge",
         generator_model="openai:generator",
+        pairing_strategy="random",
         evolve_top=2,
         budget=BudgetConfig(max_calls=3),
         base_dir=tmp_path,

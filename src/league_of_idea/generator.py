@@ -5,7 +5,7 @@ All generation prompts live here so they are easy to tune in one place.
 
 from __future__ import annotations
 
-from . import llm
+from . import dedup, llm
 from .models import Idea
 from .usage import UsageTracker
 
@@ -20,6 +20,7 @@ GENERATE_TEMPLATE = """Research goal:
 Generate exactly {n} distinct candidate ideas that address this goal.
 Each idea should be one or two sentences, concrete and actionable, and clearly
 different from the others (different angle, mechanism or assumption).
+{avoid}
 
 Return ONLY a JSON array of {n} strings, e.g.:
 ["idea one ...", "idea two ...", ...]
@@ -38,6 +39,7 @@ Here is a strong idea that ranked highly in a competition:
 
 Produce ONE improved variant: keep what makes it strong, address a likely
 weakness, and make it more specific or more feasible. Do not just rephrase.
+{avoid}
 
 Return ONLY the improved idea as a single JSON string, e.g.:
 "improved idea ..."
@@ -45,25 +47,42 @@ Return ONLY the improved idea as a single JSON string, e.g.:
 
 
 def generate_ideas(
-    goal: str, n: int, model: str, usage_tracker: UsageTracker | None = None
+    goal: str,
+    n: int,
+    model: str,
+    usage_tracker: UsageTracker | None = None,
+    dedup_threshold: float = 0.86,
+    max_attempts: int = 3,
 ) -> list[Idea]:
     """Generate ``n`` first-generation ideas for ``goal``."""
-    prompt = GENERATE_TEMPLATE.format(goal=goal, n=n)
-    data = llm.complete_json(
-        model, prompt, system=GENERATE_SYSTEM, usage_tracker=usage_tracker
-    )
-    if not isinstance(data, list):
-        raise llm.LLMError(f"Expected a JSON array of ideas, got: {data!r}")
     contents: list[str] = []
-    seen: set[str] = set()
-    for item in data:
-        if not isinstance(item, str):
-            raise llm.LLMError(f"Each generated idea must be a string, got: {item!r}")
-        content = item.strip()
-        normalized = " ".join(content.casefold().split())
-        if content and normalized not in seen:
-            contents.append(content)
-            seen.add(normalized)
+    for _ in range(max_attempts):
+        remaining = n - len(contents)
+        if remaining <= 0:
+            break
+        avoid = _avoid_instruction(contents)
+        prompt = GENERATE_TEMPLATE.format(
+            goal=goal,
+            n=remaining,
+            avoid=avoid,
+        )
+        data = llm.complete_json(
+            model, prompt, system=GENERATE_SYSTEM, usage_tracker=usage_tracker
+        )
+        if not isinstance(data, list):
+            raise llm.LLMError(f"Expected a JSON array of ideas, got: {data!r}")
+        for item in data:
+            if not isinstance(item, str):
+                raise llm.LLMError(
+                    f"Each generated idea must be a string, got: {item!r}"
+                )
+            content = item.strip()
+            if content and not dedup.is_near_duplicate(
+                content, contents, threshold=dedup_threshold
+            ):
+                contents.append(content)
+                if len(contents) == n:
+                    break
     if len(contents) != n:
         raise llm.LLMError(
             f"Requested {n} distinct ideas, but the model returned {len(contents)}."
@@ -80,21 +99,45 @@ def evolve_idea(
     model: str,
     usage_tracker: UsageTracker | None = None,
     created_in_round: int = 0,
+    existing_contents: list[str] | None = None,
+    dedup_threshold: float = 0.86,
+    max_attempts: int = 3,
 ) -> Idea:
     """Produce one improved child idea from ``parent``."""
-    prompt = EVOLVE_TEMPLATE.format(goal=goal, content=parent.content)
-    data = llm.complete_json(
-        model, prompt, system=EVOLVE_SYSTEM, usage_tracker=usage_tracker
+    existing = list(existing_contents or [])
+    if parent.content not in existing:
+        existing.append(parent.content)
+    for _ in range(max_attempts):
+        prompt = EVOLVE_TEMPLATE.format(
+            goal=goal,
+            content=parent.content,
+            avoid=_avoid_instruction(existing),
+        )
+        data = llm.complete_json(
+            model, prompt, system=EVOLVE_SYSTEM, usage_tracker=usage_tracker
+        )
+        if not isinstance(data, str) or not data.strip():
+            raise llm.LLMError(
+                f"Expected one improved idea as a JSON string, got: {data!r}"
+            )
+        content = data.strip()
+        if not dedup.is_near_duplicate(
+            content, existing, threshold=dedup_threshold
+        ):
+            return Idea(
+                content=content,
+                generation=parent.generation + 1,
+                parent_id=parent.id,
+                created_in_round=created_in_round,
+                created_by=model,
+            )
+    raise llm.LLMError(
+        f"Could not evolve a sufficiently distinct idea after {max_attempts} attempts."
     )
-    if not isinstance(data, str) or not data.strip():
-        raise llm.LLMError(f"Expected one improved idea as a JSON string, got: {data!r}")
-    content = data.strip()
-    if " ".join(content.casefold().split()) == " ".join(parent.content.casefold().split()):
-        raise llm.LLMError("The evolved idea is identical to its parent.")
-    return Idea(
-        content=content,
-        generation=parent.generation + 1,
-        parent_id=parent.id,
-        created_in_round=created_in_round,
-        created_by=model,
-    )
+
+
+def _avoid_instruction(contents: list[str]) -> str:
+    if not contents:
+        return ""
+    formatted = "\n".join(f"- {content}" for content in contents)
+    return f"Do not duplicate or closely paraphrase any of these ideas:\n{formatted}"

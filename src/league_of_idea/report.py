@@ -34,7 +34,11 @@ def render_markdown(session: Session) -> str:
         f"| Generator | {_cell(session.generator_model)} |",
         f"| Judge | {_cell(session.judge_model)} |",
         f"| Rubric | {_cell(session.rubric.version)} |",
-        f"| Usage | {session.usage.calls} calls; {session.usage.total_tokens} tokens |",
+        f"| Double judge | {session.double_judge} |",
+        f"| Usage | {session.usage.calls} calls; {session.usage.total_tokens} tokens; "
+        f"${session.usage.estimated_cost_usd:.4f}; "
+        f"{session.usage.unpriced_calls} unpriced calls |",
+        f"| Pricing | {_cell(session.pricing.version)} |",
         f"| Created | {session.created_at.isoformat()} |",
         f"| Updated | {session.updated_at.isoformat()} |",
         "",
@@ -69,8 +73,8 @@ def render_markdown(session: Session) -> str:
             "",
             "## Match evidence",
             "",
-            "| Round | A | B | Winner | Scores A | Scores B | Confidence | Reasoning |",
-            "|---:|---|---|---|---|---|---:|---|",
+            "| Round | A | B | Winner | Disputed | Scores A | Scores B | Confidence | Reasoning |",
+            "|---:|---|---|---|---|---|---|---:|---|",
         ]
     )
     for match in session.matches:
@@ -82,6 +86,7 @@ def render_markdown(session: Session) -> str:
         confidence = "—" if match.confidence is None else f"{match.confidence:.2f}"
         lines.append(
             f"| {match.round} | {_cell(label_a)} | {_cell(label_b)} | {winner} | "
+            f"{match.disputed} | "
             f"{_cell(_scores(match.scores_a))} | {_cell(_scores(match.scores_b))} | "
             f"{confidence} | {_cell(match.reasoning)} |"
         )

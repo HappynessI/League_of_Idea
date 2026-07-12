@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from .rubric import DEFAULT_RUBRIC, Rubric
+from .pricing import PricingTable
 from .usage import BudgetConfig, UsageStats
 
 
@@ -47,6 +48,8 @@ class MatchResult(BaseModel):
     scores_a: dict[str, float] = Field(default_factory=dict)
     scores_b: dict[str, float] = Field(default_factory=dict)
     confidence: float | None = Field(default=None, ge=0, le=1)
+    disputed: bool = False
+    evaluations: int = Field(default=1, ge=1)
 
 
 class Match(BaseModel):
@@ -62,13 +65,15 @@ class Match(BaseModel):
     confidence: float | None = Field(default=None, ge=0, le=1)
     rubric_version: str = "legacy"
     judge_model: str = "unknown"
+    disputed: bool = False
+    evaluations: int = Field(default=1, ge=1)
 
 
 class Session(BaseModel):
     """A full tournament run — the unit of persistence."""
 
     id: str = Field(default_factory=_new_id)
-    schema_version: int = 2
+    schema_version: int = 3
     status: Literal["running", "completed", "failed", "stopped"] = "running"
     goal: str
     num_ideas: int
@@ -78,12 +83,16 @@ class Session(BaseModel):
     rubric: Rubric = Field(default_factory=lambda: DEFAULT_RUBRIC.model_copy(deep=True))
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     usage: UsageStats = Field(default_factory=UsageStats)
-    pairing_strategy: str = "random"
+    pricing: PricingTable = Field(default_factory=PricingTable)
+    pairing_strategy: str = "swiss"
+    double_judge: bool = False
+    dedup_threshold: float = Field(default=0.86, ge=0, le=1)
     k: float = 32.0
     evolve: bool = True
     evolve_top: int = 2
     seed: int | None = None
     completed_rounds: int = 0
+    pairing_plans: dict[int, list[tuple[str, str]]] = Field(default_factory=dict)
     evolution_plans: dict[int, list[str]] = Field(default_factory=dict)
     error: str | None = None
     created_at: datetime = Field(default_factory=_now)

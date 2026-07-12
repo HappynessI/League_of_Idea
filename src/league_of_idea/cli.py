@@ -13,6 +13,7 @@ from . import report as report_module
 from . import storage, tournament
 from .llm import LLMError
 from .models import Session
+from .pricing import load_pricing
 from .rubric import load_rubric
 from .usage import BudgetConfig
 
@@ -54,10 +55,13 @@ def run(
         "openai:gpt-4o", "--generator-model", help="Model used to generate/evolve ideas."
     ),
     pairing: str = typer.Option(
-        "random", "--pairing", help="Pairing strategy: round-robin | random."
+        "swiss", "--pairing", help="Pairing strategy: swiss | random | round-robin."
     ),
     k: float = typer.Option(32.0, "--k", help="Elo K-factor."),
     no_evolve: bool = typer.Option(False, "--no-evolve", help="Disable idea evolution."),
+    double_judge: bool = typer.Option(
+        False, "--double-judge", help="Judge each match in both A/B orientations."
+    ),
     evolve_top: int = typer.Option(2, "--evolve-top", help="How many top ideas to evolve."),
     seed: int | None = typer.Option(None, "--seed", help="Random seed for reproducible pairing."),
     rubric_file: Path | None = typer.Option(
@@ -68,6 +72,15 @@ def run(
     ),
     max_tokens: int | None = typer.Option(
         None, "--max-tokens", help="Stop safely once reported token usage reaches this value."
+    ),
+    max_cost_usd: float | None = typer.Option(
+        None, "--max-cost-usd", help="Stop once estimated provider cost reaches this value."
+    ),
+    pricing_file: Path | None = typer.Option(
+        None, "--pricing-file", help="Versioned JSON model pricing table."
+    ),
+    dedup_threshold: float = typer.Option(
+        0.86, "--dedup-threshold", help="Near-duplicate similarity threshold from 0 to 1."
     ),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where to store session JSON."
@@ -82,10 +95,16 @@ def run(
             pairing,
             evolve=not no_evolve,
             evolve_top=evolve_top,
+            double_judge=double_judge,
         )
-        console.print(f"Estimated LLM calls: [bold yellow]{calls}[/bold yellow]")
+        console.print(f"Estimated minimum LLM calls: [bold yellow]{calls}[/bold yellow]")
         selected_rubric = load_rubric(rubric_file)
-        selected_budget = BudgetConfig(max_calls=max_calls, max_tokens=max_tokens)
+        selected_budget = BudgetConfig(
+            max_calls=max_calls,
+            max_tokens=max_tokens,
+            max_cost_usd=max_cost_usd,
+        )
+        selected_pricing = load_pricing(pricing_file)
         with console.status("[bold]Running tournament...[/bold]", spinner="dots"):
             session = tournament.run_tournament(
                 goal,
@@ -95,6 +114,9 @@ def run(
                 generator_model=generator_model,
                 rubric=selected_rubric,
                 budget=selected_budget,
+                pricing=selected_pricing,
+                double_judge=double_judge,
+                dedup_threshold=dedup_threshold,
                 pairing_strategy=pairing,
                 k=k,
                 evolve=not no_evolve,
@@ -109,7 +131,8 @@ def run(
     console.print()
     _print_leaderboard(session)
     console.print(
-        f"Usage: {session.usage.calls} calls, {session.usage.total_tokens} tokens; "
+        f"Usage: {session.usage.calls} calls, {session.usage.total_tokens} tokens, "
+        f"${session.usage.estimated_cost_usd:.4f}; "
         f"status: [bold]{session.status}[/bold]"
     )
     console.print(f"\nSession id: [bold cyan]{session.id}[/bold cyan]  "
@@ -141,6 +164,9 @@ def resume(
     max_tokens: int | None = typer.Option(
         None, "--max-tokens", help="Optional new total token budget."
     ),
+    max_cost_usd: float | None = typer.Option(
+        None, "--max-cost-usd", help="Optional new total cost budget in USD."
+    ),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where session JSON is stored."
     ),
@@ -149,10 +175,15 @@ def resume(
     try:
         loaded = storage.load_session(session, sessions_dir)
         budget_override = None
-        if max_calls is not None or max_tokens is not None:
+        if max_calls is not None or max_tokens is not None or max_cost_usd is not None:
             budget_override = BudgetConfig(
                 max_calls=max_calls if max_calls is not None else loaded.budget.max_calls,
                 max_tokens=max_tokens if max_tokens is not None else loaded.budget.max_tokens,
+                max_cost_usd=(
+                    max_cost_usd
+                    if max_cost_usd is not None
+                    else loaded.budget.max_cost_usd
+                ),
             )
         with console.status("[bold]Resuming tournament...[/bold]", spinner="dots"):
             resumed = tournament.resume_tournament(
@@ -166,7 +197,8 @@ def resume(
         raise typer.Exit(code=1) from exc
     _print_leaderboard(resumed)
     console.print(
-        f"Usage: {resumed.usage.calls} calls, {resumed.usage.total_tokens} tokens; "
+        f"Usage: {resumed.usage.calls} calls, {resumed.usage.total_tokens} tokens, "
+        f"${resumed.usage.estimated_cost_usd:.4f}; "
         f"status: [bold]{resumed.status}[/bold]"
     )
 
@@ -176,12 +208,15 @@ def estimate(
     num_ideas: int = typer.Option(8, "--num-ideas", "-n", help="Initial idea count."),
     rounds: int = typer.Option(3, "--rounds", "-r", help="Number of tournament rounds."),
     pairing: str = typer.Option(
-        "random", "--pairing", help="Pairing strategy: round-robin | random."
+        "swiss", "--pairing", help="Pairing strategy: swiss | random | round-robin."
     ),
     no_evolve: bool = typer.Option(False, "--no-evolve", help="Disable idea evolution."),
+    double_judge: bool = typer.Option(
+        False, "--double-judge", help="Count two judge calls per match."
+    ),
     evolve_top: int = typer.Option(2, "--evolve-top", help="How many top ideas to evolve."),
 ) -> None:
-    """Estimate paid LLM calls without contacting a provider."""
+    """Estimate minimum planned LLM calls without contacting a provider."""
     try:
         calls = tournament.estimate_llm_calls(
             num_ideas,
@@ -189,11 +224,12 @@ def estimate(
             pairing,
             evolve=not no_evolve,
             evolve_top=evolve_top,
+            double_judge=double_judge,
         )
     except ValueError as exc:
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
-    console.print(f"Estimated LLM calls: [bold yellow]{calls}[/bold yellow]")
+    console.print(f"Estimated minimum LLM calls: [bold yellow]{calls}[/bold yellow]")
 
 
 @app.command()

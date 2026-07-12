@@ -25,6 +25,24 @@ def test_estimate_round_robin_calls_with_evolution():
     ) == 11
 
 
+def test_estimate_swiss_calls_with_evolution():
+    # generate + floor(3/2) + evolve one + floor(4/2)
+    assert tournament.estimate_llm_calls(
+        3, 2, "swiss", evolve=True, evolve_top=1
+    ) == 5
+
+
+def test_estimate_double_judge_counts_two_calls_per_match():
+    assert tournament.estimate_llm_calls(
+        4,
+        1,
+        "swiss",
+        evolve=False,
+        evolve_top=1,
+        double_judge=True,
+    ) == 5
+
+
 def test_tournament_runs_without_real_api(monkeypatch, tmp_path):
     monkeypatch.setattr(tournament.generator, "generate_ideas", _fake_generate)
     monkeypatch.setattr(tournament.generator, "evolve_idea", _fake_evolve)
@@ -75,6 +93,7 @@ def test_failure_preserves_partial_session(monkeypatch, tmp_path):
             rounds=1,
             judge_model="openai:judge",
             generator_model="openai:generator",
+            pairing_strategy="random",
             seed=1,
             base_dir=tmp_path,
         )

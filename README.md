@@ -6,7 +6,7 @@
 
 它借鉴了 _Towards an AI Co-Scientist_（Google, 2025）中提出的 Elo 评分与"想法竞赛"机制：让多个候选 idea 通过两两对战，由大语言模型担任裁判判定优劣，用 Elo 分数量化每个 idea 的相对质量，并（可选地）让高分 idea 不断进化产生改进版本，最终输出一份按质量排序的 idea 排行榜。
 
-> ⚠️ **项目状态：可用 MVP（v0.2.0）。** 核心循环、预算保护、失败续跑和审计报告已经实现，尚未在真实大规模场景下打磨。
+> ⚠️ **项目状态：可用 MVP（v0.3.0）。** 已支持瑞士轮、双向裁判、近重复检测、预算保护、失败续跑和审计报告，尚未在真实大规模场景下打磨。
 
 ---
 
@@ -69,14 +69,20 @@ loi run -g "如何降低城市内涝风险" \
         --judge-model anthropic:claude-sonnet-4-6 \
         --pairing round-robin
 
-# 先估算会发生多少次 LLM 调用（不会连接模型服务）
-loi estimate --num-ideas 8 --rounds 3 --pairing round-robin
+# 先估算至少会发生多少次 LLM 调用（不会连接模型服务）
+loi estimate --num-ideas 8 --rounds 3 --pairing swiss
 
 # 关闭进化（退化为"生成一批 → 对战排名"）
 loi run -g "..." --no-evolve
 
 # 使用自定义评分规则并设置总调用预算
 loi run -g "..." --rubric-file rubric.example.json --max-calls 40
+
+# 双向裁判：交换 A/B 后再评一次，分歧按争议平局处理
+loi run -g "..." --double-judge --max-calls 40
+
+# 按自行核对的 provider 定价统计金额并设置上限
+loi run -g "..." --pricing-file pricing.example.json --max-cost-usd 2
 
 # 提高预算并续跑失败或停止的会话
 loi resume --session <session_id> --max-calls 80
@@ -100,7 +106,7 @@ loi list
 | `--rounds` / `-r` | 迭代轮数 | 3 |
 | `--judge-model` | 裁判模型 | `anthropic:claude-sonnet-4-6` |
 | `--generator-model` | 生成/进化模型 | `openai:gpt-4o` |
-| `--pairing` | 配对策略：`random` / `round-robin` | `random` |
+| `--pairing` | 配对策略：`swiss` / `random` / `round-robin` | `swiss` |
 | `--k` | Elo K 值 | 32 |
 | `--no-evolve` | 关闭 idea 进化 | 关闭即不进化 |
 | `--evolve-top` | 每轮进化排名前几的 idea | 2 |
@@ -108,6 +114,12 @@ loi list
 | `--rubric-file` | 自定义带版本号的 JSON 评分规则 | 内置 `research-v1` |
 | `--max-calls` | LLM 总调用次数上限 | 无限制 |
 | `--max-tokens` | provider 已报告 token 总量上限 | 无限制 |
+| `--double-judge` | 交换 A/B 再裁判一次，分歧记争议平局 | 关闭 |
+| `--dedup-threshold` | 近重复相似度阈值 | `0.86` |
+| `--pricing-file` | 自行维护的版本化模型定价 JSON | 不计金额 |
+| `--max-cost-usd` | 估算金额上限 | 无限制 |
+
+`pricing.example.json` 中的数字只是格式示例，不代表当前真实价格。使用金额预算前必须根据 provider 官方价格更新费率和版本字段。
 
 会话状态以 JSON 形式保存在 `./.loi_sessions/<session_id>.json`。每场付费对战后都会原子保存；若中途失败或预算耗尽，会保留已经完成的结果，并可用 `loi resume` 继续。报告默认写入 `.loi_reports/`。
 
@@ -148,6 +160,8 @@ league-of-idea/
 │   ├── storage.py          # 读写 JSON 状态
 │   ├── rubric.py           # 可版本化评分规则与权重
 │   ├── usage.py            # 调用/token 统计与预算保护
+│   ├── pricing.py          # 版本化模型定价与金额估算
+│   ├── dedup.py            # 本地近重复检测
 │   └── report.py           # Markdown 审计报告
 └── tests/
     ├── test_elo.py         # Elo 纯函数测试
@@ -157,6 +171,9 @@ league-of-idea/
     ├── test_tournament.py  # 无网络端到端与失败保存测试
     ├── test_rubric.py      # 评分规则测试
     ├── test_judge.py       # 分维度裁判与平局测试
+    ├── test_pairing.py     # 瑞士轮与轮空测试
+    ├── test_dedup.py       # 近重复检测测试
+    ├── test_pricing.py     # 金额估算和预算测试
     ├── test_usage.py       # 预算停止与续跑测试
     ├── test_report.py      # Markdown 报告测试
     └── test_cli.py         # CLI 调用量估算测试
@@ -191,18 +208,17 @@ pytest
 - [x] LLM calls/token 统计与预算上限
 - [x] 失败或预算停止会话续跑，避免重复计分和重复进化
 - [x] Markdown 排行榜、谱系与逐场证据报告
+- [x] 瑞士轮配对，优先相近 Elo 且避免重复对手
+- [x] 双向裁判与争议结果处理
+- [x] 本地近重复检测和缺失候选自动补生成
+- [x] 版本化模型定价、实际 token 金额估算和金额上限
 
 ### 🚧 未实现 / 计划中
 
-- [ ] **瑞士轮配对**（`pairing.swiss` 目前为占位，会抛 `NotImplementedError`）
 - [ ] **并发对战**（asyncio 同时跑多场以提速）
-- [x] 随机化 A/B 展示顺序，降低系统性位置偏差
-- [ ] 双向裁判与不一致结果处理
-- [ ] provider 定价表与金额估算（当前已统计 calls/token）
 - [ ] **多模型混战的归因分析**（`created_by` 字段已记录，但尚无分析视图）
 - [x] **基础失败重试**（指数退避，默认共尝试 3 次）
 - [ ] 超时、按 provider 限流与可配置重试策略
-- [ ] **idea 去重**（生成阶段尚未做语义去重）
 - [ ] SQLite 持久化后端（当前仅 JSON）
 - [ ] 少量真实 provider 冒烟测试（需单独配置 API key）
 - [ ] Web / 图形界面（明确的非目标，首期仅终端）
@@ -215,7 +231,7 @@ pytest
 
 - **裁判评判标准**：默认 `research-v1` 使用 novelty / feasibility / relevance 三维等权，程序按版本化 rubric 加权判胜；可通过 `--rubric-file` 自定义。
 - **默认模型**：生成用 `openai:gpt-4o`，裁判用 `anthropic:claude-sonnet-4-6`，可通过命令行参数覆盖。模型是否对你的账户可用仍以 provider 当前配置为准。
-- **配对策略**：默认随机配对以控制 API 成本；全循环更完整，但场次随 idea 数平方增长，建议先用 `loi estimate` 查看调用量。
+- **配对策略**：默认瑞士轮以较少比赛区分相近候选；随机适合探索，全循环最完整但场次随 idea 数平方增长，建议先用 `loi estimate` 查看调用量。
 - **是否引用原论文出处**：_Towards an AI Co-Scientist_ 最初以 arXiv 预印本 + 官方博客发布，是否正式发表于期刊需自行核实后再写入正式引用。
 
 ---

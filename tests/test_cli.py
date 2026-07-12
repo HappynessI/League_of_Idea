@@ -12,7 +12,7 @@ def test_estimate_uses_cost_safe_default():
     result = runner.invoke(app, ["estimate"])
 
     assert result.exit_code == 0
-    assert "35" in result.stdout
+    assert "20" in result.stdout
 
 
 def test_estimate_reports_invalid_input_without_traceback():
