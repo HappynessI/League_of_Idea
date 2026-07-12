@@ -5,11 +5,11 @@ from league_of_idea.models import Idea, MatchResult
 from league_of_idea.storage import load_session
 
 
-def _fake_generate(goal, n, model):
+def _fake_generate(goal, n, model, **kwargs):
     return [Idea(content=f"idea {index}", created_by=model) for index in range(n)]
 
 
-def _fake_evolve(goal, parent, model):
+def _fake_evolve(goal, parent, model, **kwargs):
     return Idea(
         content=f"child of {parent.id}",
         generation=parent.generation + 1,

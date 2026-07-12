@@ -16,6 +16,8 @@ import re
 import time
 from typing import Any
 
+from .usage import UsageTracker
+
 
 class LLMError(RuntimeError):
     pass
@@ -40,6 +42,7 @@ def complete(
     system: str | None = None,
     temperature: float = 0.8,
     max_retries: int = 2,
+    usage_tracker: UsageTracker | None = None,
 ) -> str:
     """Return the model's text completion for a single prompt."""
     completion = _load_any_llm()
@@ -48,6 +51,8 @@ def complete(
     if system:
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
+    if usage_tracker is not None:
+        usage_tracker.before_call()
 
     for attempt in range(max_retries + 1):
         try:
@@ -66,6 +71,9 @@ def complete(
                 ) from exc
             time.sleep(2**attempt)
 
+    if usage_tracker is not None:
+        prompt_tokens, completion_tokens = _extract_usage(resp)
+        usage_tracker.record(prompt_tokens, completion_tokens)
     return _extract_text(resp)
 
 
@@ -95,19 +103,45 @@ def _extract_text(resp: Any) -> str:
         raise LLMError(f"Could not parse LLM response: {resp!r}") from exc
 
 
+def _extract_usage(resp: Any) -> tuple[int, int]:
+    """Extract common OpenAI-style usage fields, defaulting to zero if absent."""
+    usage = resp.get("usage") if isinstance(resp, dict) else getattr(resp, "usage", None)
+    if usage is None:
+        return 0, 0
+
+    def get_value(*names: str) -> int:
+        for name in names:
+            value = usage.get(name) if isinstance(usage, dict) else getattr(usage, name, None)
+            if value is not None:
+                return int(value)
+        return 0
+
+    return (
+        get_value("prompt_tokens", "input_tokens"),
+        get_value("completion_tokens", "output_tokens"),
+    )
+
+
 def complete_json(
     model: str,
     prompt: str,
     *,
     system: str | None = None,
     temperature: float = 0.3,
+    usage_tracker: UsageTracker | None = None,
 ) -> Any:
     """Call the model and parse its reply as JSON.
 
     Provider-agnostic structured output: we ask for JSON in the prompt and
     tolerate fenced ```json blocks.
     """
-    text = complete(model, prompt, system=system, temperature=temperature)
+    text = complete(
+        model,
+        prompt,
+        system=system,
+        temperature=temperature,
+        usage_tracker=usage_tracker,
+    )
     return _parse_json(text)
 
 

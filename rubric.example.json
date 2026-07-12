@@ -1,0 +1,21 @@
+{
+  "version": "research-v1-custom",
+  "tie_margin": 0.25,
+  "criteria": [
+    {
+      "name": "novelty",
+      "description": "Originality and non-obviousness of the core mechanism.",
+      "weight": 1.0
+    },
+    {
+      "name": "feasibility",
+      "description": "Practical ability to execute, test, or deploy the idea.",
+      "weight": 1.5
+    },
+    {
+      "name": "relevance",
+      "description": "How directly the idea advances the stated goal.",
+      "weight": 1.0
+    }
+  ]
+}

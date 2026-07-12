@@ -12,6 +12,8 @@ from rich.table import Table
 from . import storage, tournament
 from .llm import LLMError
 from .models import Session
+from .rubric import load_rubric
+from .usage import BudgetConfig
 
 app = typer.Typer(
     add_completion=False,
@@ -24,7 +26,7 @@ def _print_leaderboard(session: Session) -> None:
     table = Table(title=f"Leaderboard — session {session.id}")
     table.add_column("#", justify="right", style="bold")
     table.add_column("Elo", justify="right")
-    table.add_column("W-L", justify="center")
+    table.add_column("W-D-L", justify="center")
     table.add_column("Gen", justify="center")
     table.add_column("Idea", overflow="fold")
 
@@ -32,7 +34,7 @@ def _print_leaderboard(session: Session) -> None:
         table.add_row(
             str(rank),
             f"{idea.elo:.0f}",
-            f"{idea.wins}-{idea.losses}",
+            f"{idea.wins}-{idea.draws}-{idea.losses}",
             str(idea.generation),
             idea.content,
         )
@@ -57,6 +59,15 @@ def run(
     no_evolve: bool = typer.Option(False, "--no-evolve", help="Disable idea evolution."),
     evolve_top: int = typer.Option(2, "--evolve-top", help="How many top ideas to evolve."),
     seed: int | None = typer.Option(None, "--seed", help="Random seed for reproducible pairing."),
+    rubric_file: Path | None = typer.Option(
+        None, "--rubric-file", help="Optional JSON file defining versioned judging criteria."
+    ),
+    max_calls: int | None = typer.Option(
+        None, "--max-calls", help="Stop safely before exceeding this many LLM calls."
+    ),
+    max_tokens: int | None = typer.Option(
+        None, "--max-tokens", help="Stop safely once reported token usage reaches this value."
+    ),
     sessions_dir: Path = typer.Option(
         storage.DEFAULT_DIR, "--sessions-dir", help="Where to store session JSON."
     ),
@@ -72,6 +83,8 @@ def run(
             evolve_top=evolve_top,
         )
         console.print(f"Estimated LLM calls: [bold yellow]{calls}[/bold yellow]")
+        selected_rubric = load_rubric(rubric_file)
+        selected_budget = BudgetConfig(max_calls=max_calls, max_tokens=max_tokens)
         with console.status("[bold]Running tournament...[/bold]", spinner="dots"):
             session = tournament.run_tournament(
                 goal,
@@ -79,6 +92,8 @@ def run(
                 rounds=rounds,
                 judge_model=judge_model,
                 generator_model=generator_model,
+                rubric=selected_rubric,
+                budget=selected_budget,
                 pairing_strategy=pairing,
                 k=k,
                 evolve=not no_evolve,
@@ -92,6 +107,10 @@ def run(
         raise typer.Exit(code=1) from exc
     console.print()
     _print_leaderboard(session)
+    console.print(
+        f"Usage: {session.usage.calls} calls, {session.usage.total_tokens} tokens; "
+        f"status: [bold]{session.status}[/bold]"
+    )
     console.print(f"\nSession id: [bold cyan]{session.id}[/bold cyan]  "
                   f"(view again with: loi rank --session {session.id})")
 

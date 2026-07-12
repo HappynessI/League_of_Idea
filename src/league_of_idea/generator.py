@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from . import llm
 from .models import Idea
+from .usage import UsageTracker
 
 GENERATE_SYSTEM = (
     "You are a creative research strategist. You produce concrete, distinct, "
@@ -43,10 +44,14 @@ Return ONLY the improved idea as a single JSON string, e.g.:
 """
 
 
-def generate_ideas(goal: str, n: int, model: str) -> list[Idea]:
+def generate_ideas(
+    goal: str, n: int, model: str, usage_tracker: UsageTracker | None = None
+) -> list[Idea]:
     """Generate ``n`` first-generation ideas for ``goal``."""
     prompt = GENERATE_TEMPLATE.format(goal=goal, n=n)
-    data = llm.complete_json(model, prompt, system=GENERATE_SYSTEM)
+    data = llm.complete_json(
+        model, prompt, system=GENERATE_SYSTEM, usage_tracker=usage_tracker
+    )
     if not isinstance(data, list):
         raise llm.LLMError(f"Expected a JSON array of ideas, got: {data!r}")
     contents: list[str] = []
@@ -69,10 +74,17 @@ def generate_ideas(goal: str, n: int, model: str) -> list[Idea]:
     ]
 
 
-def evolve_idea(goal: str, parent: Idea, model: str) -> Idea:
+def evolve_idea(
+    goal: str,
+    parent: Idea,
+    model: str,
+    usage_tracker: UsageTracker | None = None,
+) -> Idea:
     """Produce one improved child idea from ``parent``."""
     prompt = EVOLVE_TEMPLATE.format(goal=goal, content=parent.content)
-    data = llm.complete_json(model, prompt, system=EVOLVE_SYSTEM)
+    data = llm.complete_json(
+        model, prompt, system=EVOLVE_SYSTEM, usage_tracker=usage_tracker
+    )
     if not isinstance(data, str) or not data.strip():
         raise llm.LLMError(f"Expected one improved idea as a JSON string, got: {data!r}")
     content = data.strip()

@@ -12,6 +12,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from .rubric import DEFAULT_RUBRIC, Rubric
+from .usage import BudgetConfig, UsageStats
+
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:8]
@@ -30,6 +33,7 @@ class Idea(BaseModel):
     generation: int = 0
     parent_id: str | None = None
     wins: int = 0
+    draws: int = 0
     losses: int = 0
     created_by: str = "unknown"
 
@@ -37,8 +41,11 @@ class Idea(BaseModel):
 class MatchResult(BaseModel):
     """Structured verdict the judge model must return for one match."""
 
-    winner: Literal["A", "B"]
+    winner: Literal["A", "B", "draw"]
     reasoning: str = ""
+    scores_a: dict[str, float] = Field(default_factory=dict)
+    scores_b: dict[str, float] = Field(default_factory=dict)
+    confidence: float | None = Field(default=None, ge=0, le=1)
 
 
 class Match(BaseModel):
@@ -47,8 +54,13 @@ class Match(BaseModel):
     round: int
     idea_a_id: str
     idea_b_id: str
-    winner_id: str
+    winner_id: str | None = None
     reasoning: str = ""
+    scores_a: dict[str, float] = Field(default_factory=dict)
+    scores_b: dict[str, float] = Field(default_factory=dict)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    rubric_version: str = "legacy"
+    judge_model: str = "unknown"
 
 
 class Session(BaseModel):
@@ -56,12 +68,15 @@ class Session(BaseModel):
 
     id: str = Field(default_factory=_new_id)
     schema_version: int = 1
-    status: Literal["running", "completed", "failed"] = "running"
+    status: Literal["running", "completed", "failed", "stopped"] = "running"
     goal: str
     num_ideas: int
     rounds: int
     judge_model: str
     generator_model: str
+    rubric: Rubric = Field(default_factory=lambda: DEFAULT_RUBRIC.model_copy(deep=True))
+    budget: BudgetConfig = Field(default_factory=BudgetConfig)
+    usage: UsageStats = Field(default_factory=UsageStats)
     pairing_strategy: str = "random"
     k: float = 32.0
     evolve: bool = True

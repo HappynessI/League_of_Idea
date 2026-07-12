@@ -1,6 +1,7 @@
 import pytest
 
 from league_of_idea import llm
+from league_of_idea.usage import BudgetConfig, UsageStats, UsageTracker
 
 
 @pytest.mark.parametrize(
@@ -44,3 +45,23 @@ def test_complete_passes_provider_and_model_separately(monkeypatch):
     assert llm.complete("openai/gpt-4o-mini", "hello") == "ok"
     assert captured["provider"] == "openai"
     assert captured["model"] == "gpt-4o-mini"
+
+
+def test_complete_records_provider_usage(monkeypatch):
+    response = {
+        "choices": [{"message": {"content": "ok"}}],
+        "usage": {"prompt_tokens": 11, "completion_tokens": 7},
+    }
+    monkeypatch.setattr(llm, "_load_any_llm", lambda: lambda **kwargs: response)
+    stats = UsageStats()
+
+    llm.complete(
+        "openai:test",
+        "hello",
+        usage_tracker=UsageTracker(BudgetConfig(), stats),
+    )
+
+    assert stats.calls == 1
+    assert stats.prompt_tokens == 11
+    assert stats.completion_tokens == 7
+    assert stats.total_tokens == 18
