@@ -1,248 +1,237 @@
 # League of Idea 🏟️
 
-> 一个让想法在竞技场里互相厮杀、用 Elo 决出胜负的命令行工具。
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
+![Version](https://img.shields.io/badge/version-0.4.0-2ea44f)
+![Tests](https://img.shields.io/badge/tests-46%20passed-brightgreen)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-**League of Idea**（`loi`）是一个命令行工具，用于自动化地**生成、对战、评分并迭代优化想法（idea）**。
+> 让候选想法在 LLM 竞技场中对战，用 Elo 排名，并持续进化出更好的方案。
 
-它借鉴了 _Towards an AI Co-Scientist_（Google, 2025）中提出的 Elo 评分与"想法竞赛"机制：让多个候选 idea 通过两两对战，由大语言模型担任裁判判定优劣，用 Elo 分数量化每个 idea 的相对质量，并（可选地）让高分 idea 不断进化产生改进版本，最终输出一份按质量排序的 idea 排行榜。
+**League of Idea**（`loi`）是一个面向研究、产品和开放式问题的命令行工具。它从目标出发生成候选 idea，通过版本化评分规则让 LLM 进行成对比较，以 Elo 量化相对质量，并将高分 idea 进化到下一轮。
 
-> ⚠️ **项目状态：可用 MVP（v0.4.0）。** 已支持瑞士轮、双向裁判、受控并发、近重复检测、预算保护、失败续跑和审计报告，尚未在真实大规模场景下打磨。
+当前版本为 **v0.4.0 可用 MVP**。已支持瑞士轮、双向裁判、受控并发、预算保护、中断续跑和 Markdown 审计报告。
 
----
+## 核心能力
 
-## 核心机制
+- **生成与进化**：生成一组差异化候选，并从高分 idea 派生下一代。
+- **可靠裁判**：按 novelty、feasibility、relevance 等版本化维度评分。
+- **双向评审**：交换 A/B 顺序再次裁判；结论冲突时标为争议并按平局计分。
+- **三种配对**：瑞士轮（默认）、随机抽样、全循环。
+- **成本控制**：预估调用量，限制 calls、token 或估算金额。
+- **确定性并发**：模型判断并行执行，Elo 始终按持久化赛程顺序更新。
+- **安全续跑**：每场结果原子保存；失败或预算停止后复用已付费结果。
+- **可审计输出**：导出排行榜、评分维度、idea 谱系和逐场判定证据。
 
-整个系统是一个循环（tournament loop），由五个阶段组成：
+## 30 秒快速开始
 
-```
-1. 生成 (Generate)  根据研究目标生成 N 个候选 idea
-        ▼
-2. 对战 (Match)     idea 两两配对，LLM 裁判判定谁更优
-        ▼
-3. 评分 (Score)     按每场胜负更新双方 Elo 分
-        ▼
-4. 进化 (Evolve)    挑选高分 idea，生成改进版作为下一代
-        ▼
-5. 排名 (Rank)      循环若干轮后，按 Elo 输出排行榜
-```
-
----
-
-## 安装
-
-需要 Python 3.11+。推荐使用 [`uv`](https://github.com/astral-sh/uv)，也可用 `pip`。
+需要 Python 3.11+。
 
 ```bash
-# 克隆后，在项目根目录安装：
+git clone https://github.com/HappynessI/League_of_Idea.git
+cd League_of_Idea
+
+python -m venv .venv
+source .venv/bin/activate
 pip install .
 
-# 开发模式：
-pip install -e '.[dev]'
-```
-
-LLM 调用层使用 [**any-llm**](https://github.com/mozilla-ai/any-llm)（Mozilla.ai 出品，直接调用各家官方 SDK，**非 LiteLLM**）。安装时请带上需要的 provider：
-
-```bash
-pip install 'any-llm-sdk[openai,anthropic]'
-```
-
-### 配置密钥
-
-复制 `.env.example` 为 `.env`，填入真实密钥（`.env` 已被 `.gitignore` 排除，不会提交）：
-
-```bash
 cp .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY / ANTHROPIC_API_KEY
+# 在 .env 中填写 OPENAI_API_KEY / ANTHROPIC_API_KEY
 ```
 
----
-
-## 使用
+先查看计划调用量，不会连接模型服务：
 
 ```bash
-# 运行一次完整竞赛
-loi run --goal "如何降低城市内涝风险" --num-ideas 8 --rounds 3
+loi estimate --num-ideas 8 --rounds 3
+# 默认配置：Estimated minimum LLM calls: 20
+```
 
-# 指定模型与配对策略
-loi run -g "如何降低城市内涝风险" \
-        --generator-model openai:gpt-4o \
-        --judge-model anthropic:claude-sonnet-4-6 \
-        --pairing round-robin
+运行第一次竞赛：
 
-# 先估算至少会发生多少次 LLM 调用（不会连接模型服务）
-loi estimate --num-ideas 8 --rounds 3 --pairing swiss
+```bash
+loi run \
+  --goal "如何降低城市内涝风险" \
+  --num-ideas 8 \
+  --rounds 3 \
+  --max-calls 30
+```
 
-# 关闭进化（退化为"生成一批 → 对战排名"）
-loi run -g "..." --no-evolve
+## 常用工作流
 
-# 使用自定义评分规则并设置总调用预算
-loi run -g "..." --rubric-file rubric.example.json --max-calls 40
+### 更稳健的双向裁判
 
-# 双向裁判：交换 A/B 后再评一次，分歧按争议平局处理
-loi run -g "..." --double-judge --max-calls 40
+```bash
+loi run \
+  --goal "如何提高小模型代理的长程任务成功率" \
+  --double-judge \
+  --max-calls 50
+```
 
-# 最多同时执行 4 场裁判；计分顺序仍保持确定
-loi run -g "..." --concurrency 4 --max-calls 40
+### 受控并发
 
-# 按自行核对的 provider 定价统计金额并设置上限
-loi run -g "..." --pricing-file pricing.example.json --max-cost-usd 2
+```bash
+loi run \
+  --goal "如何提高科研 idea 的实验可证伪性" \
+  --concurrency 4 \
+  --max-calls 40
+```
 
-# 提高预算并续跑失败或停止的会话
+模型判断可以并行完成，但 Elo 更新顺序固定，因此不同请求完成顺序不会改变最终排名。`--max-calls` 支持并发额度预留；使用 `--max-tokens` 或 `--max-cost-usd` 时必须保持 `--concurrency 1`，避免多个在途请求共同越过预算。
+
+### 自定义评分规则
+
+```bash
+loi run \
+  --goal "设计低成本机器人数据采集方案" \
+  --rubric-file rubric.example.json \
+  --max-calls 30
+```
+
+Rubric 会随 Session 一起保存。调整评分维度或权重时应更新 `version`，保证历史结果可解释。
+
+### 金额估算与上限
+
+```bash
+loi run \
+  --goal "研究目标" \
+  --pricing-file pricing.example.json \
+  --max-cost-usd 2 \
+  --concurrency 1
+```
+
+> `pricing.example.json` 中的数字只是格式示例，不代表当前真实价格。使用前必须根据模型提供商的官方价格更新费率和版本字段。
+
+### 续跑与报告
+
+```bash
+# 提高总调用预算后继续失败或停止的 Session
 loi resume --session <session_id> --max-calls 80
 
-# 导出包含排行榜、rubric、谱系和逐场证据的 Markdown 报告
-loi report --session <session_id> --output result.md
-
-# 查看历史会话排行榜
+# 再次查看排行榜
 loi rank --session <session_id>
 
-# 列出所有已保存的会话
+# 导出完整 Markdown 报告
+loi report --session <session_id> --output result.md
+
+# 列出历史 Session
 loi list
 ```
 
-### 主要参数
+## 命令概览
 
-| 参数 | 含义 | 默认 |
-|---|---|:-:|
-| `--goal` / `-g` | 研究目标 / 问题（必填） | — |
-| `--num-ideas` / `-n` | 初始 idea 数 | 8 |
-| `--rounds` / `-r` | 迭代轮数 | 3 |
-| `--judge-model` | 裁判模型 | `anthropic:claude-sonnet-4-6` |
-| `--generator-model` | 生成/进化模型 | `openai:gpt-4o` |
-| `--pairing` | 配对策略：`swiss` / `random` / `round-robin` | `swiss` |
-| `--k` | Elo K 值 | 32 |
-| `--no-evolve` | 关闭 idea 进化 | 关闭即不进化 |
-| `--evolve-top` | 每轮进化排名前几的 idea | 2 |
-| `--seed` | 固定配对与 A/B 展示顺序（不固定模型输出） | 随机 |
-| `--rubric-file` | 自定义带版本号的 JSON 评分规则 | 内置 `research-v1` |
-| `--max-calls` | LLM 总调用次数上限 | 无限制 |
-| `--max-tokens` | provider 已报告 token 总量上限 | 无限制 |
-| `--double-judge` | 交换 A/B 再裁判一次，分歧记争议平局 | 关闭 |
-| `--dedup-threshold` | 近重复相似度阈值 | `0.86` |
-| `--pricing-file` | 自行维护的版本化模型定价 JSON | 不计金额 |
-| `--max-cost-usd` | 估算金额上限 | 无限制 |
-| `--concurrency` / `-c` | 同时执行的裁判比赛数 | `1` |
+| 命令 | 作用 |
+|---|---|
+| `loi run` | 创建并运行一个 idea tournament |
+| `loi estimate` | 估算最低计划 LLM 调用量，不发起 API 请求 |
+| `loi resume` | 继续失败或预算停止的 Session |
+| `loi rank` | 查看已保存的排行榜 |
+| `loi report` | 导出 Markdown 审计报告 |
+| `loi list` | 列出本地 Session |
 
-`pricing.example.json` 中的数字只是格式示例，不代表当前真实价格。使用金额预算前必须根据 provider 官方价格更新费率和版本字段。
+`loi run` 的主要选项：
 
-并发模式会先预留调用次数，将完成的裁判结果写入 pending cache，再按持久化赛程顺序更新 Elo。因此并发完成顺序不会改变排名。为防止多个在途请求同时越过无法预估的 token/金额边界，使用 `--max-tokens` 或 `--max-cost-usd` 时必须保持 `--concurrency 1`；`--max-calls` 支持安全并发。
+| 参数 | 默认 | 说明 |
+|---|---:|---|
+| `--num-ideas` | `8` | 初始候选数量 |
+| `--rounds` | `3` | tournament 轮数 |
+| `--pairing` | `swiss` | `swiss` / `random` / `round-robin` |
+| `--double-judge` | 关闭 | 对调 A/B 后再次裁判 |
+| `--concurrency` | `1` | 最大并发裁判比赛数 |
+| `--evolve-top` | `2` | 每轮进化的高分 idea 数 |
+| `--no-evolve` | 关闭 | 禁止进化，仅做排名 |
+| `--rubric-file` | 内置规则 | 自定义版本化评分规则 |
+| `--dedup-threshold` | `0.86` | 近重复相似度阈值 |
+| `--max-calls` | 无限制 | LLM 逻辑调用总上限 |
+| `--max-tokens` | 无限制 | provider 已报告 token 上限 |
+| `--pricing-file` | 不计金额 | 版本化模型费率表 |
+| `--max-cost-usd` | 无限制 | 估算金额上限 |
+| `--seed` | 随机 | 固定配对和 A/B 展示顺序 |
 
-会话状态以 JSON 形式保存在 `./.loi_sessions/<session_id>.json`。每场付费对战后都会原子保存；若中途失败或预算耗尽，会保留已经完成的结果，并可用 `loi resume` 继续。报告默认写入 `.loi_reports/`。
+使用 `loi run --help` 查看完整参数。
 
----
+## Tournament 机制
 
-## Elo 评分
-
-采用国际象棋标准 Elo：
-
-```
-期望胜率：  E_A = 1 / (1 + 10 ^ ((R_B - R_A) / 400))
-分数更新：  R_A_new = R_A + K * (S_A - E_A)
-```
-
-默认初始分 1200，K 值 32。该模块（`elo.py`）为纯函数，已有单元测试覆盖。
-
----
-
-## 项目结构
-
-```
-league-of-idea/
-├── pyproject.toml          # 依赖 + [project.scripts] 注册 `loi` 命令
-├── .env.example            # 所需环境变量（不含真实值）
-├── .gitignore
-├── README.md
-├── LICENSE                 # MIT
-├── src/league_of_idea/
-│   ├── __init__.py
-│   ├── cli.py              # 入口：解析命令与参数，启动主循环
-│   ├── llm.py              # 封装 any-llm 调用（生成 / 裁判共用）
-│   ├── models.py           # pydantic 数据结构：Idea、MatchResult、Session
-│   ├── generator.py        # 生成 / 进化候选 idea
-│   ├── judge.py            # 裁判：两个 idea 对战，输出胜负
-│   ├── elo.py              # Elo 评分计算（纯函数）
-│   ├── pairing.py          # 配对策略：随机 / 全循环
-│   ├── tournament.py       # 编排：串起 生成→对战→评分→进化→排名
-│   ├── storage.py          # 读写 JSON 状态
-│   ├── rubric.py           # 可版本化评分规则与权重
-│   ├── usage.py            # 调用/token 统计与预算保护
-│   ├── pricing.py          # 版本化模型定价与金额估算
-│   ├── dedup.py            # 本地近重复检测
-│   └── report.py           # Markdown 审计报告
-└── tests/
-    ├── test_elo.py         # Elo 纯函数测试
-    ├── test_llm.py         # 模型标识与 JSON 解析测试
-    ├── test_generator.py   # 生成结果校验测试
-    ├── test_storage.py     # JSON 持久化测试
-    ├── test_tournament.py  # 无网络端到端与失败保存测试
-    ├── test_rubric.py      # 评分规则测试
-    ├── test_judge.py       # 分维度裁判与平局测试
-    ├── test_pairing.py     # 瑞士轮与轮空测试
-    ├── test_dedup.py       # 近重复检测测试
-    ├── test_pricing.py     # 金额估算和预算测试
-    ├── test_concurrency.py # 并发重叠、预算和确定性测试
-    ├── test_usage.py       # 预算停止与续跑测试
-    ├── test_report.py      # Markdown 报告测试
-    └── test_cli.py         # CLI 调用量估算测试
+```text
+研究目标
+   │
+   ▼
+生成候选 ──► 近重复过滤
+   │
+   ▼
+持久化配对计划 ──► LLM 裁判 ──► 维度分数 / 置信度 / 争议
+   │                                  │
+   │                                  ▼
+   └──────────────────────────────► Elo 更新
+                                      │
+                                      ▼
+                              高分 idea 进化
+                                      │
+                                      └──► 下一轮 / 最终报告
 ```
 
-运行测试：
+默认瑞士轮优先匹配 Elo 相近且尚未交手的 idea。新 idea 从统一的 1200 Elo 开始，必须通过比赛获得排名，不直接继承父代分数。
+
+## 状态、预算与复现语义
+
+- Session 默认保存在 `.loi_sessions/<session_id>.json`。
+- 报告默认保存在 `.loi_reports/<session_id>.md`。
+- pairing plan、evolution plan 和已完成裁判结果都会持久化。
+- 并发任务先预留调用额度，再执行模型请求。
+- 并发返回的结果先进入 pending cache，随后按赛程顺序串行计分。
+- `--seed` 固定配对和 A/B 顺序，但不能保证第三方模型输出完全确定。
+- Elo 是特定目标、rubric、裁判模型和比赛集合下的相对分数，不是绝对质量指标。
+
+## 模型与密钥
+
+所有模型调用经由 [Mozilla.ai any-llm](https://github.com/mozilla-ai/any-llm)，模型标识使用 `provider:model`：
 
 ```bash
-pip install -e '.[dev]'
-pytest
+loi run \
+  --goal "研究目标" \
+  --generator-model openai:gpt-4o \
+  --judge-model anthropic:claude-sonnet-4-6
 ```
 
----
+密钥从环境变量或 `.env` 读取。`.env` 已加入 `.gitignore`，不要把真实密钥提交到版本库。
 
-## 功能状态
+## 开发
 
-### ✅ 已实现
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+pytest -q
+```
 
-- [x] 命令行接收研究目标（`loi run --goal ...`）
-- [x] 一次生成 N 个候选 idea（`generator.py`）
-- [x] 两两对战：随机（默认、成本可控）与全循环（小规模严谨评测）
-- [x] LLM 裁判，结构化（JSON）输出胜负与理由（novelty / feasibility / relevance 三维标准）
-- [x] 标准 Elo 评分更新
-- [x] 多轮迭代（`--rounds`）
-- [x] **Idea 进化**：每轮取高分 idea 生成改进版注入下一代（`--no-evolve` 可关闭）
-- [x] 状态持久化为 JSON，可用 `loi rank` / `loi list` 查看历史
-- [x] 终端排行榜输出（rich 表格）
-- [x] `.env` 密钥管理，密钥不入库
-- [x] Elo、LLM 适配、生成校验、存储、CLI 与 tournament 无网络集成测试
-- [x] 可版本化、自定义权重的 rubric 与分维度评分
-- [x] 平局、置信度和程序侧加权判胜
-- [x] LLM calls/token 统计与预算上限
-- [x] 失败或预算停止会话续跑，避免重复计分和重复进化
-- [x] Markdown 排行榜、谱系与逐场证据报告
-- [x] 瑞士轮配对，优先相近 Elo 且避免重复对手
-- [x] 双向裁判与争议结果处理
-- [x] 本地近重复检测和缺失候选自动补生成
-- [x] 版本化模型定价、实际 token 金额估算和金额上限
-- [x] 受控并发裁判、调用额度预留、pending result 续跑与确定性计分
+当前测试覆盖 Elo、生成校验、瑞士轮、双向裁判、去重、预算、定价、续跑、报告和并发确定性。
 
-### 🚧 未实现 / 计划中
+主要模块：
 
-- [ ] **多模型混战的归因分析**（`created_by` 字段已记录，但尚无分析视图）
-- [x] **基础失败重试**（指数退避，默认共尝试 3 次）
-- [ ] 超时、按 provider 限流与可配置重试策略
-- [ ] SQLite 持久化后端（当前仅 JSON）
-- [ ] 少量真实 provider 冒烟测试（需单独配置 API key）
-- [ ] Web / 图形界面（明确的非目标，首期仅终端）
+```text
+src/league_of_idea/
+├── cli.py          # 命令行入口
+├── tournament.py   # tournament 编排、续跑与确定性并发
+├── generator.py    # idea 生成与进化
+├── judge.py        # 分维度及双向裁判
+├── pairing.py      # 瑞士轮、随机、全循环
+├── elo.py          # Elo 纯函数
+├── rubric.py       # 版本化评分规则
+├── dedup.py        # 本地近重复检测
+├── usage.py        # 调用/token 预算与并发额度预留
+├── pricing.py      # 版本化费率与金额估算
+├── storage.py      # 原子 JSON 持久化
+└── report.py       # Markdown 审计报告
+```
 
----
+## 路线图
 
-## 设计说明 & 待确认项
+- [ ] 可配置请求超时、重试和 provider 级限流
+- [ ] 多模型生成归因与对比视图
+- [ ] SQLite 存储与 schema migration
+- [ ] 使用真实 provider 的可选冒烟测试
+- [ ] Web / 图形界面（终端版本稳定之后）
 
-完整设计文档见仓库外的 PRD。几个仍需人工最终确认的关键点：
-
-- **裁判评判标准**：默认 `research-v1` 使用 novelty / feasibility / relevance 三维等权，程序按版本化 rubric 加权判胜；可通过 `--rubric-file` 自定义。
-- **默认模型**：生成用 `openai:gpt-4o`，裁判用 `anthropic:claude-sonnet-4-6`，可通过命令行参数覆盖。模型是否对你的账户可用仍以 provider 当前配置为准。
-- **配对策略**：默认瑞士轮以较少比赛区分相近候选；随机适合探索，全循环最完整但场次随 idea 数平方增长，建议先用 `loi estimate` 查看调用量。
-- **是否引用原论文出处**：_Towards an AI Co-Scientist_ 最初以 arXiv 预印本 + 官方博客发布，是否正式发表于期刊需自行核实后再写入正式引用。
-
----
+版本变化见 [CHANGELOG.md](CHANGELOG.md)，架构取舍见 [docs/DESIGN_REVIEW.md](docs/DESIGN_REVIEW.md)。
 
 ## License
 
-[MIT](./LICENSE)
+[MIT](LICENSE)

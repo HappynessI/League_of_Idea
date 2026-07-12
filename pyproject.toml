@@ -36,8 +36,8 @@ dev = [
 loi = "league_of_idea.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/your-username/league-of-idea"
-Issues = "https://github.com/your-username/league-of-idea/issues"
+Homepage = "https://github.com/HappynessI/League_of_Idea"
+Issues = "https://github.com/HappynessI/League_of_Idea/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/league_of_idea"]
