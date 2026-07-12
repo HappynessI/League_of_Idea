@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "league-of-idea"
+version = "0.1.0"
+description = "A command-line arena where ideas battle and Elo decides the winner."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "wyh" }]
+keywords = ["llm", "elo", "ideas", "tournament", "co-scientist", "cli"]
+classifiers = [
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Environment :: Console",
+]
+
+dependencies = [
+    "typer>=0.12",
+    "pydantic>=2.6",
+    "python-dotenv>=1.0",
+    "rich>=13.7",
+    # LLM calling layer (Mozilla.ai any-llm — NOT litellm).
+    # Install with the providers you need, e.g. any-llm-sdk[openai,anthropic].
+    "any-llm-sdk>=1.9,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+loi = "league_of_idea.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/your-username/league-of-idea"
+Issues = "https://github.com/your-username/league-of-idea/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/league_of_idea"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
