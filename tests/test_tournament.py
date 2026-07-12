@@ -85,3 +85,17 @@ def test_failure_preserves_partial_session(monkeypatch, tmp_path):
     assert saved.status == "failed"
     assert saved.error == "provider unavailable"
     assert len(saved.matches) == 1
+
+    monkeypatch.setattr(
+        tournament.judge,
+        "judge_match",
+        lambda *args, **kwargs: MatchResult(winner="A", reasoning="resumed"),
+    )
+    resumed = tournament.resume_tournament(saved.id, base_dir=tmp_path)
+
+    assert resumed.status == "completed"
+    assert len(resumed.matches) == 3
+    unique_pairs = {
+        frozenset((match.idea_a_id, match.idea_b_id)) for match in resumed.matches
+    }
+    assert len(unique_pairs) == 3

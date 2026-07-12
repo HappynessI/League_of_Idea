@@ -32,6 +32,7 @@ class Idea(BaseModel):
     elo: float = 1200.0
     generation: int = 0
     parent_id: str | None = None
+    created_in_round: int = 0
     wins: int = 0
     draws: int = 0
     losses: int = 0
@@ -67,7 +68,7 @@ class Session(BaseModel):
     """A full tournament run — the unit of persistence."""
 
     id: str = Field(default_factory=_new_id)
-    schema_version: int = 1
+    schema_version: int = 2
     status: Literal["running", "completed", "failed", "stopped"] = "running"
     goal: str
     num_ideas: int
@@ -83,6 +84,7 @@ class Session(BaseModel):
     evolve_top: int = 2
     seed: int | None = None
     completed_rounds: int = 0
+    evolution_plans: dict[int, list[str]] = Field(default_factory=dict)
     error: str | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)

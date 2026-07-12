@@ -79,6 +79,7 @@ def evolve_idea(
     parent: Idea,
     model: str,
     usage_tracker: UsageTracker | None = None,
+    created_in_round: int = 0,
 ) -> Idea:
     """Produce one improved child idea from ``parent``."""
     prompt = EVOLVE_TEMPLATE.format(goal=goal, content=parent.content)
@@ -94,5 +95,6 @@ def evolve_idea(
         content=content,
         generation=parent.generation + 1,
         parent_id=parent.id,
+        created_in_round=created_in_round,
         created_by=model,
     )

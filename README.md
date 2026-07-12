@@ -6,7 +6,7 @@
 
 它借鉴了 _Towards an AI Co-Scientist_（Google, 2025）中提出的 Elo 评分与"想法竞赛"机制：让多个候选 idea 通过两两对战，由大语言模型担任裁判判定优劣，用 Elo 分数量化每个 idea 的相对质量，并（可选地）让高分 idea 不断进化产生改进版本，最终输出一份按质量排序的 idea 排行榜。
 
-> ⚠️ **项目状态：早期脚手架（v0.1.0）。** 核心循环已经实现并可运行，但尚未在真实大规模场景下打磨。欢迎试用与反馈。
+> ⚠️ **项目状态：可用 MVP（v0.2.0）。** 核心循环、预算保护、失败续跑和审计报告已经实现，尚未在真实大规模场景下打磨。
 
 ---
 
@@ -33,11 +33,11 @@
 需要 Python 3.11+。推荐使用 [`uv`](https://github.com/astral-sh/uv)，也可用 `pip`。
 
 ```bash
-# 克隆后，在项目根目录：
-pip install -e .
+# 克隆后，在项目根目录安装：
+pip install .
 
-# 或使用 uv
-uv pip install -e .
+# 开发模式：
+pip install -e '.[dev]'
 ```
 
 LLM 调用层使用 [**any-llm**](https://github.com/mozilla-ai/any-llm)（Mozilla.ai 出品，直接调用各家官方 SDK，**非 LiteLLM**）。安装时请带上需要的 provider：
@@ -75,6 +75,15 @@ loi estimate --num-ideas 8 --rounds 3 --pairing round-robin
 # 关闭进化（退化为"生成一批 → 对战排名"）
 loi run -g "..." --no-evolve
 
+# 使用自定义评分规则并设置总调用预算
+loi run -g "..." --rubric-file rubric.example.json --max-calls 40
+
+# 提高预算并续跑失败或停止的会话
+loi resume --session <session_id> --max-calls 80
+
+# 导出包含排行榜、rubric、谱系和逐场证据的 Markdown 报告
+loi report --session <session_id> --output result.md
+
 # 查看历史会话排行榜
 loi rank --session <session_id>
 
@@ -96,8 +105,11 @@ loi list
 | `--no-evolve` | 关闭 idea 进化 | 关闭即不进化 |
 | `--evolve-top` | 每轮进化排名前几的 idea | 2 |
 | `--seed` | 固定配对与 A/B 展示顺序（不固定模型输出） | 随机 |
+| `--rubric-file` | 自定义带版本号的 JSON 评分规则 | 内置 `research-v1` |
+| `--max-calls` | LLM 总调用次数上限 | 无限制 |
+| `--max-tokens` | provider 已报告 token 总量上限 | 无限制 |
 
-会话状态以 JSON 形式保存在 `./.loi_sessions/<session_id>.json`。每场付费对战后都会原子保存；若中途失败，会话会标为 `failed` 并保留已经完成的结果。
+会话状态以 JSON 形式保存在 `./.loi_sessions/<session_id>.json`。每场付费对战后都会原子保存；若中途失败或预算耗尽，会保留已经完成的结果，并可用 `loi resume` 继续。报告默认写入 `.loi_reports/`。
 
 ---
 
@@ -133,13 +145,20 @@ league-of-idea/
 │   ├── elo.py              # Elo 评分计算（纯函数）
 │   ├── pairing.py          # 配对策略：随机 / 全循环
 │   ├── tournament.py       # 编排：串起 生成→对战→评分→进化→排名
-│   └── storage.py          # 读写 JSON 状态
+│   ├── storage.py          # 读写 JSON 状态
+│   ├── rubric.py           # 可版本化评分规则与权重
+│   ├── usage.py            # 调用/token 统计与预算保护
+│   └── report.py           # Markdown 审计报告
 └── tests/
     ├── test_elo.py         # Elo 纯函数测试
     ├── test_llm.py         # 模型标识与 JSON 解析测试
     ├── test_generator.py   # 生成结果校验测试
     ├── test_storage.py     # JSON 持久化测试
     ├── test_tournament.py  # 无网络端到端与失败保存测试
+    ├── test_rubric.py      # 评分规则测试
+    ├── test_judge.py       # 分维度裁判与平局测试
+    ├── test_usage.py       # 预算停止与续跑测试
+    ├── test_report.py      # Markdown 报告测试
     └── test_cli.py         # CLI 调用量估算测试
 ```
 
@@ -167,6 +186,11 @@ pytest
 - [x] 终端排行榜输出（rich 表格）
 - [x] `.env` 密钥管理，密钥不入库
 - [x] Elo、LLM 适配、生成校验、存储、CLI 与 tournament 无网络集成测试
+- [x] 可版本化、自定义权重的 rubric 与分维度评分
+- [x] 平局、置信度和程序侧加权判胜
+- [x] LLM calls/token 统计与预算上限
+- [x] 失败或预算停止会话续跑，避免重复计分和重复进化
+- [x] Markdown 排行榜、谱系与逐场证据报告
 
 ### 🚧 未实现 / 计划中
 
@@ -174,9 +198,7 @@ pytest
 - [ ] **并发对战**（asyncio 同时跑多场以提速）
 - [x] 随机化 A/B 展示顺序，降低系统性位置偏差
 - [ ] 双向裁判与不一致结果处理
-- [ ] **分维度打分**（目前裁判只给整体胜负，未拆分 novelty/feasibility/relevance 的分值）
-- [ ] **成本统计**（累计 token 用量与花费）
-- [ ] **中断续跑**（从上次会话状态恢复未完成的竞赛）
+- [ ] provider 定价表与金额估算（当前已统计 calls/token）
 - [ ] **多模型混战的归因分析**（`created_by` 字段已记录，但尚无分析视图）
 - [x] **基础失败重试**（指数退避，默认共尝试 3 次）
 - [ ] 超时、按 provider 限流与可配置重试策略
@@ -191,7 +213,7 @@ pytest
 
 完整设计文档见仓库外的 PRD。几个仍需人工最终确认的关键点：
 
-- **裁判评判标准**：当前默认 novelty / feasibility / relevance 三维等权，整体判胜负。这是 Elo 分是否有意义的核心，可在 `judge.py` 调整。
+- **裁判评判标准**：默认 `research-v1` 使用 novelty / feasibility / relevance 三维等权，程序按版本化 rubric 加权判胜；可通过 `--rubric-file` 自定义。
 - **默认模型**：生成用 `openai:gpt-4o`，裁判用 `anthropic:claude-sonnet-4-6`，可通过命令行参数覆盖。模型是否对你的账户可用仍以 provider 当前配置为准。
 - **配对策略**：默认随机配对以控制 API 成本；全循环更完整，但场次随 idea 数平方增长，建议先用 `loi estimate` 查看调用量。
 - **是否引用原论文出处**：_Towards an AI Co-Scientist_ 最初以 arXiv 预印本 + 官方博客发布，是否正式发表于期刊需自行核实后再写入正式引用。

@@ -63,32 +63,61 @@ def run_tournament(
         ideas=ideas,
     )
     storage.save_session(session, base_dir)
-    rng = random.Random(seed)
+    return _continue_tournament(session, base_dir, progress)
+
+
+def resume_tournament(
+    session_id: str,
+    *,
+    base_dir: Path = storage.DEFAULT_DIR,
+    budget_override: BudgetConfig | None = None,
+    progress: ProgressFn = _noop,
+) -> Session:
+    """Continue a failed or budget-stopped session without duplicate scoring."""
+    session = storage.load_session(session_id, base_dir)
+    if session.status == "completed":
+        raise ValueError(f"Session {session_id} is already completed.")
+    if budget_override is not None:
+        session.budget = budget_override
+    session.status = "running"
+    session.error = None
+    storage.save_session(session, base_dir)
+    return _continue_tournament(session, base_dir, progress)
+
+
+def _continue_tournament(
+    session: Session,
+    base_dir: Path,
+    progress: ProgressFn,
+) -> Session:
+    usage_tracker = UsageTracker(session.budget, session.usage)
 
     try:
-        for rnd in range(1, rounds + 1):
-            progress(f"Round {rnd}/{rounds}: pairing & judging...")
+        for rnd in range(session.completed_rounds + 1, session.rounds + 1):
+            progress(f"Round {rnd}/{session.rounds}: pairing & judging...")
+            rng = _round_rng(session, rnd)
             _play_round(
                 session,
                 rnd,
-                judge_model,
-                pairing_strategy,
-                k,
+                session.judge_model,
+                session.pairing_strategy,
+                session.k,
                 progress,
                 rng,
                 base_dir,
                 usage_tracker,
             )
 
-            if evolve and rnd < rounds:
+            if session.evolve and rnd < session.rounds:
                 _evolve_round(
                     session,
-                    goal,
-                    generator_model,
-                    evolve_top,
+                    session.goal,
+                    session.generator_model,
+                    session.evolve_top,
                     progress,
                     usage_tracker,
                     base_dir,
+                    rnd,
                 )
             session.completed_rounds = rnd
             storage.save_session(session, base_dir)
@@ -110,6 +139,12 @@ def run_tournament(
     return session
 
 
+def _round_rng(session: Session, rnd: int) -> random.Random:
+    """Create a stable per-round RNG so interrupted rounds can be reconstructed."""
+    seed_material = f"{session.seed if session.seed is not None else session.id}:{rnd}"
+    return random.Random(seed_material)
+
+
 def _play_round(
     session: Session,
     rnd: int,
@@ -121,8 +156,17 @@ def _play_round(
     base_dir: Path,
     usage_tracker: UsageTracker,
 ) -> None:
-    pairs = pairing.make_pairs(session.ideas, pairing_strategy, rng=rng)
+    eligible_ideas = [idea for idea in session.ideas if idea.created_in_round < rnd]
+    pairs = pairing.make_pairs(eligible_ideas, pairing_strategy, rng=rng)
+    completed_pairs = {
+        frozenset((match.idea_a_id, match.idea_b_id))
+        for match in session.matches
+        if match.round == rnd
+    }
+    played = 0
     for idea_a, idea_b in pairs:
+        if frozenset((idea_a.id, idea_b.id)) in completed_pairs:
+            continue
         # Randomize presentation order to avoid systematically favoring early ideas.
         if rng.random() < 0.5:
             idea_a, idea_b = idea_b, idea_a
@@ -166,9 +210,10 @@ def _play_round(
                 judge_model=judge_model,
             )
         )
+        played += 1
         # Preserve paid API work even if a later match fails or the process stops.
         storage.save_session(session, base_dir)
-    progress(f"Round {rnd}: played {len(pairs)} matches.")
+    progress(f"Round {rnd}: played {played} new matches ({len(pairs)} planned).")
 
 
 def _evolve_round(
@@ -179,12 +224,30 @@ def _evolve_round(
     progress: ProgressFn,
     usage_tracker: UsageTracker,
     base_dir: Path,
+    rnd: int,
 ) -> None:
-    top = session.leaderboard()[:evolve_top]
+    if rnd not in session.evolution_plans:
+        session.evolution_plans[rnd] = [
+            idea.id for idea in session.leaderboard()[:evolve_top]
+        ]
+        storage.save_session(session, base_dir)
+    parent_ids = session.evolution_plans[rnd]
+    top = [session.get_idea(parent_id) for parent_id in parent_ids]
     children: list[Idea] = []
     for parent in top:
+        if parent is None:
+            raise ValueError(f"Evolution parent is missing from session: {parent_ids}")
+        if any(
+            idea.parent_id == parent.id and idea.created_in_round == rnd
+            for idea in session.ideas
+        ):
+            continue
         child = generator.evolve_idea(
-            goal, parent, generator_model, usage_tracker=usage_tracker
+            goal,
+            parent,
+            generator_model,
+            usage_tracker=usage_tracker,
+            created_in_round=rnd,
         )
         children.append(child)
         session.ideas.append(child)

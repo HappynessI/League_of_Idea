@@ -1,6 +1,6 @@
 # League of Idea 设计评审与演进建议
 
-本文记录对初版 PRD 与 v0.1 代码的评审结论。目标是先做成一个可靠、可解释、成本可控的终端工具，再扩展为更完整的 idea 研究系统。
+本文记录对初版 PRD 与 v0.2 代码的评审结论。目标是先做成一个可靠、可解释、成本可控的终端工具，再扩展为更完整的 idea 研究系统。
 
 ## MVP 定义
 
@@ -40,17 +40,17 @@ any-llm 当前推荐 `provider:model`，代码同时兼容旧的 `provider/model
 
 以下模块按优先级逐步加入，不建议一次性全部实现。
 
-### P1：下一版应做
+### P1：v0.2 已完成
 
-- `rubric.py`：把 novelty、feasibility、relevance 的定义、权重与版本从 prompt 中抽离。每个 Session 保存 rubric 版本，保证历史结果可解释。
-- `resume.py`：根据 `status`、已完成轮次和已有 match 继续失败会话，并避免重复计分。
-- `budget.py`：把调用次数、输入输出 token、估算费用和预算上限统一管理；到达上限时安全停止。
-- `report.py`：除 Elo 外输出胜负证据、分歧较大的比赛、idea 谱系和 Markdown/JSON 报告。
+- `rubric.py`：已把评分定义、权重与版本从 prompt 中抽离并保存到 Session。
+- 续跑：已根据状态、确定性轮次计划和已有 match 继续会话，避免重复计分与重复进化。
+- `usage.py`：已统计 calls/token，并支持总调用和 token 预算上限；金额估算仍待 provider 定价配置。
+- `report.py`：已输出 Elo、胜负证据、idea 谱系、rubric 与 Markdown 报告。
 
 ### P2：质量与效率
 
 - `pairing.py` 增加瑞士轮或基于不确定性的主动配对，减少无信息比赛。
-- `judge.py` 增加双向裁判、平局、置信度和分维度评分。A/B 两次结论不一致时标记为争议，而不是强行判胜。
+- `judge.py` 增加双向裁判与一致性检查。平局、置信度和分维度评分已完成；A/B 两次结论不一致时应标记为争议。
 - `dedup.py` 增加语义去重；当前仅拦截规范化后完全相同的文本。
 - 异步 runner 与 provider 级并发限制。并发只改变执行速度，不应改变 tournament 的业务语义。
 
@@ -62,11 +62,10 @@ any-llm 当前推荐 `provider:model`，代码同时兼容旧的 `provider/model
 
 ## 数据模型建议
 
-Elo 只表示在特定目标、rubric、裁判模型与比赛集合下的相对强弱，不应被解释为绝对质量。后续 Match 建议加入：
+Elo 只表示在特定目标、rubric、裁判模型与比赛集合下的相对强弱，不应被解释为绝对质量。Match 已保存 rubric 版本、各维度分数、裁判模型和置信度；后续仍建议加入：
 
-- rubric 版本与各维度分数；
-- 裁判模型、调用时间、token 用量与成本；
-- position swap 信息、置信度和是否争议；
+- 单次调用时间、token 用量与金额成本；
+- position swap 信息和是否争议；
 - prompt 版本或哈希，支持复现实验。
 
 Session 应继续保存完整运行配置、schema version、状态、时间戳和随机种子。若以后切到 SQLite，JSON 仍可作为稳定的导入导出格式。

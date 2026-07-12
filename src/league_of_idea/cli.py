@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
+from . import report as report_module
 from . import storage, tournament
 from .llm import LLMError
 from .models import Session
@@ -102,7 +103,7 @@ def run(
                 base_dir=sessions_dir,
                 progress=lambda msg: console.log(msg),
             )
-    except (LLMError, ValueError) as exc:
+    except (LLMError, OSError, ValueError) as exc:
         console.print(f"[bold red]Tournament failed:[/bold red] {exc}")
         raise typer.Exit(code=1) from exc
     console.print()
@@ -132,6 +133,45 @@ def rank(
 
 
 @app.command()
+def resume(
+    session: str = typer.Option(..., "--session", "-s", help="Session id to continue."),
+    max_calls: int | None = typer.Option(
+        None, "--max-calls", help="Optional new total LLM call budget."
+    ),
+    max_tokens: int | None = typer.Option(
+        None, "--max-tokens", help="Optional new total token budget."
+    ),
+    sessions_dir: Path = typer.Option(
+        storage.DEFAULT_DIR, "--sessions-dir", help="Where session JSON is stored."
+    ),
+) -> None:
+    """Resume a failed or budget-stopped tournament."""
+    try:
+        loaded = storage.load_session(session, sessions_dir)
+        budget_override = None
+        if max_calls is not None or max_tokens is not None:
+            budget_override = BudgetConfig(
+                max_calls=max_calls if max_calls is not None else loaded.budget.max_calls,
+                max_tokens=max_tokens if max_tokens is not None else loaded.budget.max_tokens,
+            )
+        with console.status("[bold]Resuming tournament...[/bold]", spinner="dots"):
+            resumed = tournament.resume_tournament(
+                session,
+                base_dir=sessions_dir,
+                budget_override=budget_override,
+                progress=lambda msg: console.log(msg),
+            )
+    except (LLMError, OSError, ValueError) as exc:
+        console.print(f"[bold red]Resume failed:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+    _print_leaderboard(resumed)
+    console.print(
+        f"Usage: {resumed.usage.calls} calls, {resumed.usage.total_tokens} tokens; "
+        f"status: [bold]{resumed.status}[/bold]"
+    )
+
+
+@app.command()
 def estimate(
     num_ideas: int = typer.Option(8, "--num-ideas", "-n", help="Initial idea count."),
     rounds: int = typer.Option(3, "--rounds", "-r", help="Number of tournament rounds."),
@@ -154,6 +194,24 @@ def estimate(
         console.print(f"[red]{exc}[/red]")
         raise typer.Exit(code=1) from exc
     console.print(f"Estimated LLM calls: [bold yellow]{calls}[/bold yellow]")
+
+
+@app.command()
+def report(
+    session: str = typer.Option(..., "--session", "-s", help="Session id to export."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Markdown output path."),
+    sessions_dir: Path = typer.Option(
+        storage.DEFAULT_DIR, "--sessions-dir", help="Where session JSON is stored."
+    ),
+) -> None:
+    """Export a session leaderboard and match evidence as Markdown."""
+    try:
+        loaded = storage.load_session(session, sessions_dir)
+        path = report_module.save_report(loaded, output)
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        console.print(f"[bold red]Report failed:[/bold red] {exc}")
+        raise typer.Exit(code=1) from exc
+    console.print(f"Report written to [bold cyan]{path}[/bold cyan]")
 
 
 @app.command(name="list")
