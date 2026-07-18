@@ -1,6 +1,6 @@
 ---
 name: league-of-idea
-description: Operate League of Idea as an evidence-backed research ideation workspace and Elo Arena. Use when a user wants to turn a rough research direction and representative papers into traceable Paper Cards, gap hypotheses, complete versioned research ideas, reviewer critiques, human-shortlisted candidates, Arena comparisons, or auditable reports; also use for the legacy quick idea tournament, budgets, resume, rubrics, and rankings.
+description: Operate League of Idea as an evidence-backed research ideation workspace and Elo Arena. Use when a user wants to discover papers, turn a rough research direction and approved full texts into traceable Paper Cards, gap hypotheses, complete versioned research ideas, reviewer critiques, human-shortlisted candidates, Arena comparisons, or auditable reports; also use for the legacy quick idea tournament, budgets, resume, rubrics, and rankings.
 ---
 
 # League of Idea
@@ -47,9 +47,19 @@ python3 "$SKILL_DIR/scripts/loi.py" project init \
   --max-calls <finite total>
 ```
 
-Import only papers the user supplies or explicitly approves. PDF, Markdown, and UTF-8 text are supported:
+Discover candidate papers before importing them. Search results are metadata leads, not evidence:
 
 ```bash
+python3 "$SKILL_DIR/scripts/loi.py" paper search "<specific direction and keywords>" \
+  --project <project_id> --source arxiv --source crossref --source semantic-scholar --limit 10
+python3 "$SKILL_DIR/scripts/loi.py" paper results --project <project_id>
+```
+
+Ask the researcher to approve the papers. Fetch only a result with a known open PDF, or use a manually downloaded file. PDF, Markdown, and UTF-8 text are supported:
+
+```bash
+python3 "$SKILL_DIR/scripts/loi.py" paper fetch \
+  --project <project_id> --result <result_id>
 python3 "$SKILL_DIR/scripts/loi.py" paper add \
   --project <project_id> --file <paper.pdf>
 python3 "$SKILL_DIR/scripts/loi.py" paper analyze \
@@ -178,6 +188,9 @@ Read [references/workflows.md](references/workflows.md) for ready-to-run task pa
 ## Guardrails
 
 - Keep paper facts, AI gap hypotheses, and researcher decisions visibly separate.
+- Treat `paper search` records as discovery metadata only; never cite a SearchHit as evidence before full-text import and Paper Card analysis.
+- Prefer arXiv, Crossref, and Semantic Scholar for discovery, but do not claim their combined results are comprehensive or current.
+- `paper fetch` only accepts HTTPS and validates a PDF response; if a connector has no open PDF, ask the researcher to provide the file and use `paper add`.
 - Reject or retry any analysis with source locators or quotes not present in the imported paper.
 - Treat every Gap as a hypothesis requiring validation, never as proof of novelty.
 - Never send an Idea to the research Arena without the user's explicit shortlist decision.

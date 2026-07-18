@@ -46,6 +46,18 @@ def render_markdown(project: ResearchProject) -> str:
         "## Paper cards and evidence",
         "",
     ]
+    lines.extend(["## Literature discovery (metadata only)", ""])
+    if project.search_hits:
+        lines.extend(["These records are discovery leads, not evidence, until full text is imported.", ""])
+        for hit in project.search_hits:
+            pdf = f" · PDF: {hit.pdf_url}" if hit.pdf_url else ""
+            doi = f" · DOI: {hit.doi}" if hit.doi else ""
+            lines.append(
+                f"- `{hit.id}` **{_cell(hit.title)}** ({hit.source}, {hit.year or 'year n/a'}){doi}{pdf}"
+            )
+    else:
+        lines.append("No search results saved yet.")
+    lines.append("")
     for paper in project.papers:
         lines.extend([f"### {_cell(paper.title)} (`{paper.id}`)", ""])
         if paper.card is None:

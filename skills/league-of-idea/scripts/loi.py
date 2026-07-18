@@ -112,7 +112,10 @@ def doctor(as_json: bool = False) -> int:
         "loi_command": command,
         "keys": {
             key: _key_configured(root, key)
-            for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")
+            for key in (
+                "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+                "SEMANTIC_SCHOLAR_API_KEY", "CROSSREF_MAILTO",
+            )
         },
     }
     if as_json:

@@ -71,9 +71,30 @@ class Paper(BaseModel):
     source_type: Literal["text", "markdown", "pdf"]
     source_sha256: str
     source_text: str = Field(min_length=1)
+    external_ids: dict[str, str] = Field(default_factory=dict)
+    source_url: str | None = None
+    abstract: str | None = None
     truncated_for_analysis: bool = False
     card: PaperCard | None = None
     created_at: datetime = Field(default_factory=now)
+
+
+class SearchHit(BaseModel):
+    """Metadata discovery result; it is not evidence until a full text is imported."""
+
+    id: str = Field(default_factory=lambda: new_id("hit"))
+    source: Literal["arxiv", "crossref", "semantic-scholar"]
+    external_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    authors: list[str] = Field(default_factory=list)
+    abstract: str | None = None
+    year: int | None = None
+    venue: str | None = None
+    doi: str | None = None
+    landing_url: str | None = None
+    pdf_url: str | None = None
+    citation_count: int | None = None
+    retrieved_at: datetime = Field(default_factory=now)
 
 
 class EvidenceReference(BaseModel):
@@ -175,7 +196,7 @@ class ProjectArenaRun(BaseModel):
 
 class ResearchProject(BaseModel):
     id: str = Field(default_factory=lambda: new_id("project"))
-    schema_version: int = 1
+    schema_version: int = 2
     title: str = Field(min_length=1)
     brief: ProjectBrief
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
@@ -183,6 +204,7 @@ class ResearchProject(BaseModel):
     pricing: PricingTable = Field(default_factory=PricingTable)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
     papers: list[Paper] = Field(default_factory=list)
+    search_hits: list[SearchHit] = Field(default_factory=list)
     gaps: list[GapHypothesis] = Field(default_factory=list)
     ideas: list[ResearchIdea] = Field(default_factory=list)
     critiques: list[Critique] = Field(default_factory=list)
@@ -193,6 +215,9 @@ class ResearchProject(BaseModel):
 
     def get_paper(self, paper_id: str) -> Paper | None:
         return next((item for item in self.papers if item.id == paper_id), None)
+
+    def get_search_hit(self, hit_id: str) -> SearchHit | None:
+        return next((item for item in self.search_hits if item.id == hit_id), None)
 
     def get_gap(self, gap_id: str) -> GapHypothesis | None:
         return next((item for item in self.gaps if item.id == gap_id), None)

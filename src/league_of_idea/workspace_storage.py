@@ -28,7 +28,12 @@ def load_project(project_id: str, base_dir: Path = DEFAULT_DIR) -> ResearchProje
     path = project_path(project_id, base_dir)
     if not path.exists():
         raise FileNotFoundError(f"No project {project_id!r} under {base_dir}")
-    return ResearchProject.model_validate_json(path.read_text(encoding="utf-8"))
+    project = ResearchProject.model_validate_json(path.read_text(encoding="utf-8"))
+    # SearchHit is additive, so older v0.6 projects remain readable and are
+    # upgraded in memory on their next save without losing any existing data.
+    if project.schema_version < 2:
+        project.schema_version = 2
+    return project
 
 
 def list_projects(base_dir: Path = DEFAULT_DIR) -> list[str]:

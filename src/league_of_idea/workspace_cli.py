@@ -9,13 +9,13 @@ from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
-from . import arena_bridge, ingest, research, workspace_report, workspace_storage
+from . import arena_bridge, connectors, paper_service, research, workspace_report, workspace_storage
 from .llm import LLMError
 from .pricing import load_pricing
 from .rubric import RESEARCH_WORKSPACE_RUBRIC, load_rubric
 from .runtime import RuntimeConfig
 from .usage import BudgetConfig, BudgetExceeded
-from .workspace_models import Paper, ProjectBrief, ResearchConstraint, ResearchProject
+from .workspace_models import ProjectBrief, ResearchConstraint, ResearchProject, SearchHit
 
 project_app = typer.Typer(help="Manage evidence-backed research projects.")
 paper_app = typer.Typer(help="Import and analyze representative papers.")
@@ -53,6 +53,28 @@ def _load(project_id: str, projects_dir: Path) -> ResearchProject:
 def _ai_failure(exc: Exception, action: str) -> None:
     console.print(f"[bold red]{action} failed:[/bold red] {exc}")
     raise typer.Exit(code=1) from exc
+
+
+def _search_hit_keys(hit: SearchHit) -> set[str]:
+    keys = {f"{hit.source}:{hit.external_id.casefold()}"}
+    if hit.doi:
+        keys.add(f"doi:{hit.doi.casefold().removeprefix('https://doi.org/')}")
+    return keys
+
+
+def _print_search_hits(hits: list[SearchHit]) -> None:
+    if not hits:
+        console.print("[yellow]No literature results found.[/yellow]")
+        return
+    table = Table(title="Literature discovery results (metadata only)")
+    table.add_column("Result")
+    table.add_column("Source")
+    table.add_column("Year")
+    table.add_column("Title", overflow="fold")
+    table.add_column("PDF")
+    for hit in hits:
+        table.add_row(hit.id, hit.source, str(hit.year or "—"), hit.title, "yes" if hit.pdf_url else "—")
+    console.print(table)
 
 
 @project_app.command("init")
@@ -127,6 +149,7 @@ def project_show(
     table.add_row("Keywords", ", ".join(project.brief.keywords))
     analyzed = sum(paper.card is not None for paper in project.papers)
     table.add_row("Papers", f"{analyzed}/{len(project.papers)} analyzed")
+    table.add_row("Search hits", str(len(project.search_hits)))
     table.add_row("Gaps", str(len(project.gaps)))
     table.add_row("Ideas", str(len(project.ideas)))
     table.add_row("Critiques", str(len(project.critiques)))
@@ -160,24 +183,84 @@ def paper_add(
 ) -> None:
     try:
         project = _load(project_id, projects_dir)
-        source_type, source_text, digest, truncated = ingest.ingest_file(file)
-        if any(item.source_sha256 == digest for item in project.papers):
-            raise ValueError("This exact paper file is already in the project.")
-        paper = Paper(
-            title=title or file.stem,
-            authors=authors,
-            year=year,
-            source_path=str(file.expanduser().resolve()),
-            source_type=source_type,
-            source_sha256=digest,
-            source_text=source_text,
-            truncated_for_analysis=truncated,
+        paper = paper_service.add_source_file(
+            project, file, title=title, authors=authors, year=year
         )
-        project.papers.append(paper)
         workspace_storage.save_project(project, projects_dir)
     except (OSError, RuntimeError, ValueError) as exc:
         _ai_failure(exc, "Paper import")
     console.print(f"Paper added: [bold cyan]{paper.id}[/bold cyan] ({paper.title})")
+
+
+@paper_app.command("search")
+def paper_search(
+    project_id: str = typer.Option(..., "--project", "-p"),
+    query: str = typer.Argument(..., help="Topic, title, author, or keywords."),
+    sources: list[str] = typer.Option(
+        ["arxiv", "crossref", "semantic-scholar"], "--source", "-s",
+        help="Repeat --source or pass a comma-separated list.",
+    ),
+    limit: int = typer.Option(10, "--limit", min=1, max=50),
+    projects_dir: Path = typer.Option(workspace_storage.DEFAULT_DIR, "--projects-dir"),
+) -> None:
+    """Discover scholarly metadata; results are not evidence until imported."""
+    project = _load(project_id, projects_dir)
+    selected = [source for value in sources for source in value.split(",") if source.strip()]
+    try:
+        hits = connectors.search(query, sources=selected, limit=limit, runtime=project.runtime)
+    except (connectors.ConnectorError, ValueError) as exc:
+        _ai_failure(exc, "Literature search")
+    existing = {key for hit in project.search_hits for key in _search_hit_keys(hit)}
+    added = 0
+    for hit in hits:
+        if existing & _search_hit_keys(hit):
+            continue
+        project.search_hits.append(hit)
+        existing.update(_search_hit_keys(hit))
+        added += 1
+    workspace_storage.save_project(project, projects_dir)
+    console.print(f"Found {len(hits)} results; saved {added} new metadata hits.")
+    _print_search_hits(hits)
+
+
+@paper_app.command("results")
+def paper_results(
+    project_id: str = typer.Option(..., "--project", "-p"),
+    projects_dir: Path = typer.Option(workspace_storage.DEFAULT_DIR, "--projects-dir"),
+) -> None:
+    """List saved discovery metadata (not yet imported evidence)."""
+    project = _load(project_id, projects_dir)
+    _print_search_hits(project.search_hits)
+
+
+@paper_app.command("fetch")
+def paper_fetch(
+    project_id: str = typer.Option(..., "--project", "-p"),
+    result_id: str = typer.Option(..., "--result", "-r"),
+    projects_dir: Path = typer.Option(workspace_storage.DEFAULT_DIR, "--projects-dir"),
+) -> None:
+    """Fetch an open PDF result and import it as a raw paper source."""
+    project = _load(project_id, projects_dir)
+    hit = project.get_search_hit(result_id)
+    if hit is None:
+        _ai_failure(ValueError(f"Unknown search result id: {result_id}"), "Search result lookup")
+    destination = projects_dir / "sources" / project.id / f"{hit.id}.pdf"
+    try:
+        connectors.download_pdf(hit, destination, runtime=project.runtime)
+        paper = paper_service.add_source_file(
+            project,
+            destination,
+            title=hit.title,
+            authors=hit.authors,
+            year=hit.year,
+            external_ids={hit.source: hit.external_id, **({"doi": hit.doi} if hit.doi else {})},
+            source_url=hit.landing_url,
+            abstract=hit.abstract,
+        )
+        workspace_storage.save_project(project, projects_dir)
+    except (connectors.ConnectorError, OSError, RuntimeError, ValueError) as exc:
+        _ai_failure(exc, "Paper fetch/import")
+    console.print(f"Paper imported: [bold cyan]{paper.id}[/bold cyan] ({paper.title})")
 
 
 @paper_app.command("list")

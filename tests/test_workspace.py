@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -61,6 +62,17 @@ def test_project_storage_round_trip(tmp_path):
     loaded = workspace_storage.load_project(project.id, tmp_path)
     assert loaded == project
     assert workspace_storage.list_projects(tmp_path) == [project.id]
+
+
+def test_legacy_project_schema_is_upgraded_on_load(tmp_path):
+    project = _project()
+    payload = project.model_dump()
+    payload["schema_version"] = 1
+    payload.pop("search_hits")
+    (tmp_path / f"{project.id}.json").write_text(json.dumps(payload, default=str), encoding="utf-8")
+    loaded = workspace_storage.load_project(project.id, tmp_path)
+    assert loaded.schema_version == 2
+    assert loaded.search_hits == []
 
 
 def test_paper_analysis_rejects_invented_quote(monkeypatch):

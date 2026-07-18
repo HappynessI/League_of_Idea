@@ -3,6 +3,7 @@ from typer.testing import CliRunner
 from league_of_idea.cli import app
 from league_of_idea.models import Session
 from league_of_idea.storage import save_session
+from league_of_idea.workspace_models import SearchHit
 
 
 runner = CliRunner()
@@ -85,3 +86,29 @@ def test_project_init_rejects_too_few_keywords(tmp_path):
     )
     assert result.exit_code == 1
     assert "Project creation failed" in result.stdout
+
+
+def test_paper_search_persists_metadata_only(monkeypatch, tmp_path):
+    projects_dir = tmp_path / "projects"
+    created = runner.invoke(
+        app,
+        [
+            "project", "init", "--title", "Search project", "--direction", "Agents",
+            "--keyword", "agents", "--keyword", "retrieval", "--projects-dir", str(projects_dir),
+        ],
+    )
+    assert created.exit_code == 0
+    project_id = next(projects_dir.glob("*.json")).stem
+    monkeypatch.setattr(
+        "league_of_idea.workspace_cli.connectors.search",
+        lambda *args, **kwargs: [SearchHit(source="arxiv", external_id="123", title="A paper", year=2024)],
+    )
+    result = runner.invoke(
+        app,
+        ["paper", "search", "agents", "--project", project_id, "--source", "arxiv", "--projects-dir", str(projects_dir)],
+    )
+    assert result.exit_code == 0
+    assert "metadata only" in result.stdout
+    listed = runner.invoke(app, ["paper", "results", "--project", project_id, "--projects-dir", str(projects_dir)])
+    assert listed.exit_code == 0
+    assert "A paper" in listed.stdout

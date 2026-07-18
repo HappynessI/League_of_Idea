@@ -2,6 +2,14 @@
 
 本项目遵循语义化版本。功能提交保留在 Git `main` 分支。
 
+## 0.7.0
+
+- 接入 arXiv、Crossref、Semantic Scholar 三个轻量论文检索连接器。
+- 统一保存作者、摘要、年份、DOI、落地页、开放 PDF 和引用数等 SearchHit 元数据，并按 DOI、外部 id 和标题去重。
+- 增加 `loi paper search/results/fetch`；检索结果与证据化 Paper Card 分离，只有显式导入全文后才能进入分析工作流。
+- 仅允许通过 HTTPS 下载并校验 PDF 响应；不支持开放 PDF 的论文继续使用 `paper add` 手动导入。
+- ResearchProject schema 升级至 2；补充连接器、持久化和 CLI 测试。
+
 ## 0.6.0
 
 - 将产品从黑盒 idea 生成器升级为 evidence-backed Research Idea Workspace。

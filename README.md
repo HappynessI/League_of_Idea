@@ -1,8 +1,8 @@
 # League of Idea 🏟️
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
-![Version](https://img.shields.io/badge/version-0.6.0-2ea44f)
-![Tests](https://img.shields.io/badge/tests-61%20passed-brightgreen)
+![Version](https://img.shields.io/badge/version-0.7.0-2ea44f)
+![Tests](https://img.shields.io/badge/tests-68%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 ![League of Idea — LLM idea tournament poster](assets/league-of-idea-poster.png)
@@ -11,12 +11,14 @@
 
 **League of Idea**（`loi`）是一个证据驱动的科研 Idea 构建工作台。它保存研究方向、现实约束和代表性论文，把论文整理成可追溯 Paper Card，协助研究者发现待验证 Gap、构建完整 Idea、进行审稿式批判和版本化修订。只有研究者明确 shortlist 的候选才会进入 Elo Arena。
 
-当前版本为 **v0.6.0 Research Idea Workspace**。原有快速 tournament 保持兼容，但严肃科研场景推荐使用“文献 → Gap → Idea → Critique → 人工 shortlist → Arena”工作流。
+当前版本为 **v0.7.0 Research Idea Workspace**。原有快速 tournament 保持兼容。现在可以先从 arXiv、Crossref、Semantic Scholar 检索候选文献，再由研究者挑选并导入全文，继续“文献 → Gap → Idea → Critique → 人工 shortlist → Arena”工作流。
 
 ## 核心能力
 
 - **研究 Brief**：明确方向、2–5 个关键词、研究者基础和数据/算力/时间等约束。
 - **证据化文献卡片**：导入 PDF、Markdown、TXT；每条证据必须通过真实定位符和短摘录校验。
+- **论文检索连接器**：`paper search` 统一查询 arXiv、Crossref、Semantic Scholar；结果只保存为元数据线索，不会自动冒充证据。
+- **显式全文导入**：`paper fetch` 仅下载 HTTPS open PDF；没有可验证 PDF 时保留落地页，使用 `paper add` 手动导入。
 - **Gap Hypothesis**：把研究缺口作为需要验证的 AI 推断，并保存依据、不确定性和验证动作。
 - **完整 IdeaSpec**：包含问题、假设、方法、贡献、评价、资源、风险和证伪条件。
 - **批判与版本链**：Critique 不修改原文；Revision 创建可追踪的新版本。
@@ -67,6 +69,17 @@ loi project init \
 loi paper add --project <project_id> --file paper.pdf
 loi paper analyze --project <project_id> --paper <paper_id> --model openai:gpt-4o
 ```
+
+也可以先检索近期代表性论文，再查看和挑选结果：
+
+```bash
+loi paper search "long-horizon agent reliability" --project <project_id> \
+  --source arxiv --source semantic-scholar --limit 10
+loi paper results --project <project_id>
+loi paper fetch --project <project_id> --result <result_id>
+```
+
+`SEMANTIC_SCHOLAR_API_KEY` 可选；`CROSSREF_MAILTO` 可用于 Crossref 的礼貌池请求。检索结果本身不是 Paper Card，也不能直接作为 Gap 的证据。
 
 至少分析两篇论文后，形成 Gap 和完整候选：
 
@@ -180,6 +193,7 @@ loi list
 | `loi analyze` | 按 idea 创建模型对比平均/最佳 Elo 与战绩 |
 | `loi list` | 列出本地 Session |
 | `loi project init/show/list/report` | 管理研究项目与完整审计报告 |
+| `loi paper search/results/fetch` | 检索元数据、查看结果、下载并导入可用 PDF |
 | `loi paper add/list/analyze` | 导入论文并创建证据化 Paper Card |
 | `loi gap synthesize/list` | 形成带证据引用的 Gap Hypothesis |
 | `loi idea generate/list/show/critique/revise` | 构建、批判和修订版本化 Idea |

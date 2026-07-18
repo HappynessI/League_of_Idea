@@ -15,15 +15,17 @@
 ## Evidence-backed research development
 
 1. Initialize a Project Brief with 2–5 keywords and real constraints.
-2. Import user-approved representative papers with `paper add`.
-3. Analyze each paper into a Paper Card. Do not continue if evidence validation fails.
-4. After at least two cards, use `gap synthesize`; present gaps as hypotheses.
-5. Use `idea generate`, then inspect the full IdeaSpec rather than only the title.
-6. Critique promising ideas with strict-reviewer and, when useful, a second provider.
-7. Use `idea revise` so changes become a new immutable version.
-8. Ask the researcher to select exact version ids.
-9. Record `shortlist set`, then use `arena run`.
-10. Export `project report` and recommend discussion with a supervisor or domain expert.
+2. Use `paper search` across arXiv, Crossref, and Semantic Scholar to discover leads.
+3. Show `paper results` and ask the researcher to approve representative papers.
+4. Use `paper fetch` for an approved open PDF, or `paper add` for a manually supplied file.
+5. Analyze each paper into a Paper Card. Do not continue if evidence validation fails.
+6. After at least two cards, use `gap synthesize`; present gaps as hypotheses.
+7. Use `idea generate`, then inspect the full IdeaSpec rather than only the title.
+8. Critique promising ideas with strict-reviewer and, when useful, a second provider.
+9. Use `idea revise` so changes become a new immutable version.
+10. Ask the researcher to select exact version ids.
+11. Record `shortlist set`, then use `arena run`.
+12. Export `project report` and recommend discussion with a supervisor or domain expert.
 
 The report must preserve source locators, AI inference, uncertainty, critique history, the human decision, and Arena session mapping.
 
