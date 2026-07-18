@@ -2,7 +2,9 @@
 
 ## Contents
 
-- Research ideation
+- Evidence-backed research development
+- Human shortlist and research Arena
+- Legacy quick ideation
 - Ranking without evolution
 - High-confidence judging
 - Cost-controlled execution
@@ -10,7 +12,28 @@
 - Audit report
 - Common failures
 
-## Research ideation
+## Evidence-backed research development
+
+1. Initialize a Project Brief with 2–5 keywords and real constraints.
+2. Import user-approved representative papers with `paper add`.
+3. Analyze each paper into a Paper Card. Do not continue if evidence validation fails.
+4. After at least two cards, use `gap synthesize`; present gaps as hypotheses.
+5. Use `idea generate`, then inspect the full IdeaSpec rather than only the title.
+6. Critique promising ideas with strict-reviewer and, when useful, a second provider.
+7. Use `idea revise` so changes become a new immutable version.
+8. Ask the researcher to select exact version ids.
+9. Record `shortlist set`, then use `arena run`.
+10. Export `project report` and recommend discussion with a supervisor or domain expert.
+
+The report must preserve source locators, AI inference, uncertainty, critique history, the human decision, and Arena session mapping.
+
+## Human shortlist and research Arena
+
+The CLI requires at least two versions from distinct ResearchIdea identities. Use one exact version per candidate. Arena input is a frozen full IdeaSpec containing method, evaluation, resources, risks, and falsification criteria.
+
+Do not substitute the latest version automatically after a shortlist. If the user revises an idea, ask whether they want to create a new shortlist decision.
+
+## Legacy quick ideation
 
 Use the default Swiss tournament for a broad goal:
 
@@ -31,7 +54,7 @@ python3 "$SKILL_DIR/scripts/loi.py" run \
   --goal "<goal>" --no-evolve --rounds 3 --max-calls 20
 ```
 
-The current CLI generates the initial candidates itself. If ranking user-supplied candidates becomes necessary, explain that direct candidate import is not yet a supported command rather than pretending the generated list is identical.
+For user-controlled mature candidates, prefer the Research Workspace shortlist and `arena run`; it preserves their exact selected versions rather than generating replacements.
 
 ## High-confidence judging
 

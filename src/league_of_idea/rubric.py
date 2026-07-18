@@ -62,6 +62,42 @@ DEFAULT_RUBRIC = Rubric(
 )
 
 
+RESEARCH_WORKSPACE_RUBRIC = Rubric(
+    version="research-workspace-v1",
+    criteria=[
+        Criterion(
+            name="importance",
+            description="Importance of the research problem and likely value if solved.",
+            weight=1.2,
+        ),
+        Criterion(
+            name="evidence_strength",
+            description="Strength and traceability of literature evidence for the gap and motivation.",
+            weight=1.2,
+        ),
+        Criterion(
+            name="novelty",
+            description="Plausible originality beyond the cited prior work, without unsupported novelty claims.",
+        ),
+        Criterion(
+            name="methodological_validity",
+            description="Whether the proposed method can answer the research question.",
+            weight=1.3,
+        ),
+        Criterion(
+            name="feasibility",
+            description="Practical executability under the project's data, compute, time and skill constraints.",
+            weight=1.2,
+        ),
+        Criterion(
+            name="falsifiability",
+            description="Clarity of evaluation, baselines and conditions that could disprove the hypothesis.",
+        ),
+    ],
+    tie_margin=0.2,
+)
+
+
 def load_rubric(path: Path | None = None) -> Rubric:
     """Load a JSON rubric or return the built-in research rubric."""
     if path is None:

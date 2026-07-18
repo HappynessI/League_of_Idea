@@ -18,12 +18,14 @@ from .pricing import load_pricing
 from .rubric import load_rubric
 from .usage import BudgetConfig
 from .runtime import RuntimeConfig
+from . import workspace_cli
 
 app = typer.Typer(
     add_completion=False,
-    help="League of Idea — an arena where ideas battle and Elo decides the winner.",
+    help="League of Idea — evidence-backed research ideation and Idea Arena.",
 )
 console = Console()
+workspace_cli.register(app)
 
 
 def _print_leaderboard(session: Session) -> None:

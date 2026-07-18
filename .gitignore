@@ -4,6 +4,8 @@
 # Tournament state
 .loi_sessions/
 .loi_reports/
+.loi_projects/
+.loi_project_reports/
 
 # Python
 __pycache__/

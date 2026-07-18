@@ -30,6 +30,16 @@ Model identifiers use `provider:model`. Availability depends on the user's provi
 
 The default 8-idea, 3-round Swiss run has a minimum plan of 20 LLM calls. Retries can add calls.
 
+## Research workspace
+
+- Project Brief keywords must contain 2–5 unique values.
+- Constraints use `category:description`, for example `compute:one GPU` or `time:three months`.
+- `paper add` accepts PDF, Markdown, and UTF-8 text. Imported source text is stored locally with a SHA-256 hash; PDF extraction uses `pypdf`.
+- `paper analyze` creates Paper Cards with line/page locators and short quotes. Invalid locators or quotes fail the operation.
+- `gap synthesize` requires at least two analyzed papers. Gaps are hypotheses and must reference existing evidence ids.
+- `idea revise` never overwrites a prior version. `shortlist set` records the human decision and accepts at most one version per ResearchIdea.
+- `arena run` freezes the selected IdeaSpec snapshots and uses rubric `research-workspace-v1` unless a custom rubric is supplied.
+
 ## Pairing
 
 - `swiss`: cost-efficient default; pair nearby Elo and avoid rematches when possible.
@@ -93,6 +103,10 @@ Replace example rates with verified current provider prices. Include every gener
 
 - Sessions: `.loi_sessions/<session_id>.json`
 - Reports: `.loi_reports/<session_id>.md`
+- Research projects: `.loi_projects/<project_id>.json`
+- Research project reports: `.loi_project_reports/<project_id>.md`
 - Override both commands with `--sessions-dir` when the working directory is not the repository root.
 
 The Session stores schema version, models, rubric, pricing, pairing/evolution plans, pending results, usage, status, timestamps, and all ideas/matches.
+
+Research projects store the Brief, imported source text and hashes, Paper Cards and evidence, Gap hypotheses, immutable Idea versions, Critiques, human decisions, Arena mappings, runtime settings, and lifetime usage.

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "league-of-idea"
-version = "0.5.0"
-description = "A command-line arena where ideas battle and Elo decides the winner."
+version = "0.6.0"
+description = "An evidence-backed research idea workspace with an Elo comparison arena."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -22,6 +22,7 @@ dependencies = [
     "pydantic>=2.6",
     "python-dotenv>=1.0",
     "rich>=13.7",
+    "pypdf>=5,<7",
     # LLM calling layer (Mozilla.ai any-llm — NOT litellm).
     # Install with the providers you need, e.g. any-llm-sdk[openai,anthropic].
     "any-llm-sdk>=1.9,<2",

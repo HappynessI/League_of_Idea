@@ -39,6 +39,7 @@ class Idea(BaseModel):
     draws: int = 0
     losses: int = 0
     created_by: str = "unknown"
+    source_ref: str | None = None
 
 
 class MatchResult(BaseModel):
@@ -74,7 +75,7 @@ class Session(BaseModel):
     """A full tournament run — the unit of persistence."""
 
     id: str = Field(default_factory=_new_id)
-    schema_version: int = 5
+    schema_version: int = 6
     status: Literal["running", "completed", "failed", "stopped"] = "running"
     goal: str
     num_ideas: int

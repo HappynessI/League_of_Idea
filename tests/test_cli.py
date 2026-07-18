@@ -50,3 +50,38 @@ def test_report_command_exports_stored_session(tmp_path):
     assert result.exit_code == 0
     assert output.exists()
     assert session.id in output.read_text(encoding="utf-8")
+
+
+def test_project_init_requires_and_saves_research_brief(tmp_path):
+    projects_dir = tmp_path / "projects"
+    result = runner.invoke(
+        app,
+        [
+            "project", "init",
+            "--title", "Agent reliability",
+            "--direction", "Study failure prediction for agents",
+            "--keyword", "agents",
+            "--keyword", "reliability",
+            "--constraint", "compute:one GPU",
+            "--projects-dir", str(projects_dir),
+        ],
+    )
+    assert result.exit_code == 0
+    files = list(projects_dir.glob("*.json"))
+    assert len(files) == 1
+    assert "one GPU" in files[0].read_text(encoding="utf-8")
+
+
+def test_project_init_rejects_too_few_keywords(tmp_path):
+    result = runner.invoke(
+        app,
+        [
+            "project", "init",
+            "--title", "Project",
+            "--direction", "Direction",
+            "--keyword", "only-one",
+            "--projects-dir", str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Project creation failed" in result.stdout

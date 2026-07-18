@@ -2,6 +2,17 @@
 
 本项目遵循语义化版本。功能提交保留在 Git `main` 分支。
 
+## 0.6.0
+
+- 将产品从黑盒 idea 生成器升级为 evidence-backed Research Idea Workspace。
+- 增加 Project Brief、现实约束、论文导入和来源哈希。
+- 增加带真实定位符和短摘录校验的结构化 Paper Card。
+- 增加 Gap Hypothesis，强制引用项目内 paper/evidence id 并显式记录不确定性。
+- 增加完整 IdeaSpec、不可覆盖的 IdeaVersion、审稿式 Critique 和 Revision。
+- 增加人工 shortlist 强制关卡；Arena 只接收被明确选中的版本快照。
+- 增加科研专用 Arena rubric、研究项目报告和失败 Arena 用量回收记录。
+- 原有 tournament CLI 和 Session 保持兼容，Session schema 升级至 6。
+
 ## 0.5.0
 
 - 增加可配置单请求超时和仅针对瞬时故障的指数退避重试。

@@ -2,6 +2,12 @@
 
 本文记录对初版 PRD 与 v0.4 代码的评审结论。目标是先做成一个可靠、可解释、成本可控的终端工具，再扩展为更完整的 idea 研究系统。
 
+## v0.6 产品边界调整
+
+v0.5 以前的 MVP 已验证比赛层，但“从粗糙目标直接生成并排名”不能代表真实科研选题过程。v0.6 在 Arena 前新增独立的 Research Workspace：研究者先定义方向和现实约束，导入真实论文，形成可追溯 Paper Card 与待验证 Gap，再生成、批判和修订完整 Idea。只有人工明确 shortlist 的不可变版本快照可以进入 Arena。
+
+详细产品定义与验收边界见 [RESEARCH_WORKSPACE_PRD.md](RESEARCH_WORKSPACE_PRD.md)。旧的自动生成 tournament 仍作为通用快速模式保留，但不再是推荐的严肃科研工作流。
+
 ## MVP 定义
 
 MVP 应完成一条可验证的闭环：

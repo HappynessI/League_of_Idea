@@ -73,6 +73,39 @@ def test_tournament_runs_without_real_api(monkeypatch, tmp_path):
     assert load_session(session.id, tmp_path).status == "completed"
 
 
+def test_tournament_accepts_mature_initial_ideas_without_generation(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        tournament.generator,
+        "generate_ideas",
+        lambda *args, **kwargs: pytest.fail("generation must be skipped"),
+    )
+    monkeypatch.setattr(
+        tournament.judge,
+        "judge_match",
+        lambda *args, **kwargs: MatchResult(winner="A", reasoning="test"),
+    )
+    initial = [
+        Idea(content="complete idea A", source_ref="project/idea-a/version-a"),
+        Idea(content="complete idea B", source_ref="project/idea-b/version-b"),
+    ]
+    session = tournament.run_tournament(
+        "goal",
+        num_ideas=99,
+        rounds=1,
+        judge_model="openai:judge",
+        generator_model="research-workspace",
+        initial_ideas=initial,
+        pairing_strategy="swiss",
+        evolve=False,
+        base_dir=tmp_path,
+    )
+    assert session.num_ideas == 2
+    assert session.usage.calls == 0
+    assert [idea.source_ref for idea in session.ideas] == [
+        "project/idea-a/version-a", "project/idea-b/version-b"
+    ]
+
+
 def test_failure_preserves_partial_session(monkeypatch, tmp_path):
     monkeypatch.setattr(tournament.generator, "generate_ideas", _fake_generate)
     calls = 0

@@ -43,6 +43,8 @@ def run_tournament(
     dedup_threshold: float = 0.86,
     max_concurrency: int = 1,
     runtime: RuntimeConfig | None = None,
+    initial_ideas: list[Idea] | None = None,
+    session_id: str | None = None,
     pairing_strategy: str = "swiss",
     k: float = elo.DEFAULT_K,
     evolve: bool = True,
@@ -52,6 +54,8 @@ def run_tournament(
     progress: ProgressFn = _noop,
 ) -> Session:
     """Run a full tournament and return the persisted session."""
+    if initial_ideas is not None:
+        num_ideas = len(initial_ideas)
     _validate_options(
         goal,
         num_ideas,
@@ -75,10 +79,13 @@ def run_tournament(
             "--concurrency 1 to prevent parallel overshoot."
         )
     if selected_budget.max_cost_usd is not None:
+        priced_models = (
+            (judge_model,)
+            if initial_ideas is not None
+            else (generator_model, judge_model)
+        )
         missing = [
-            model
-            for model in (generator_model, judge_model)
-            if selected_pricing.price_for(model) is None
+            model for model in priced_models if selected_pricing.price_for(model) is None
         ]
         if missing:
             raise ValueError(
@@ -87,16 +94,20 @@ def run_tournament(
             )
     usage = UsageStats()
     usage_tracker = UsageTracker(selected_budget, usage, selected_pricing)
-    progress(f"Generating {num_ideas} ideas...")
-    ideas = generator.generate_ideas(
-        goal,
-        num_ideas,
-        generator_model,
-        usage_tracker=usage_tracker,
-        dedup_threshold=dedup_threshold,
-        runtime=runtime_controller,
-    )
+    if initial_ideas is None:
+        progress(f"Generating {num_ideas} ideas...")
+        ideas = generator.generate_ideas(
+            goal,
+            num_ideas,
+            generator_model,
+            usage_tracker=usage_tracker,
+            dedup_threshold=dedup_threshold,
+            runtime=runtime_controller,
+        )
+    else:
+        ideas = [idea.model_copy(deep=True) for idea in initial_ideas]
     session = Session(
+        **({"id": session_id} if session_id is not None else {}),
         goal=goal,
         num_ideas=num_ideas,
         rounds=rounds,

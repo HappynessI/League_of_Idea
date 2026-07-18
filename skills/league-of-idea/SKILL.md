@@ -1,6 +1,6 @@
 ---
 name: league-of-idea
-description: Operate the League of Idea CLI to generate, compare, Elo-rank, evolve, resume, and audit candidate ideas for research, product, engineering, or other open-ended goals. Use when a user asks to brainstorm and rank approaches, run an idea tournament, compare candidate proposals with an LLM judge, evolve high-scoring ideas, estimate or constrain model cost, configure pairing/rubrics, resume a stopped Session, inspect rankings, or export a Markdown evidence report.
+description: Operate League of Idea as an evidence-backed research ideation workspace and Elo Arena. Use when a user wants to turn a rough research direction and representative papers into traceable Paper Cards, gap hypotheses, complete versioned research ideas, reviewer critiques, human-shortlisted candidates, Arena comparisons, or auditable reports; also use for the legacy quick idea tournament, budgets, resume, rubrics, and rankings.
 ---
 
 # League of Idea
@@ -28,7 +28,73 @@ Use the project's existing `loi` CLI. Do not recreate tournament logic in ad-hoc
 
 The wrapper discovers, in order: `LOI_BIN`, the repository `.venv`, `loi` on `PATH`, or an importable `league_of_idea` package. Set `LEAGUE_OF_IDEA_ROOT` only when automatic repository discovery fails.
 
-## Run a tournament
+## Choose the workflow
+
+For serious research ideation, use the Research Workspace workflow below. Use the legacy quick tournament only when the user explicitly wants fast brainstorming/ranking without a literature-grounded development process.
+
+## Build an evidence-backed research project
+
+Do not ask AI to generate ideas before a Project Brief exists. Initialize it with the user's direction verbatim, 2–5 keywords, known background, and explicit constraints:
+
+```bash
+python3 "$SKILL_DIR/scripts/loi.py" project init \
+  --title "<title>" \
+  --direction "<specific direction>" \
+  --keyword "<keyword 1>" --keyword "<keyword 2>" \
+  --background "<existing foundation>" \
+  --constraint "compute:<condition>" \
+  --constraint "time:<condition>" \
+  --max-calls <finite total>
+```
+
+Import only papers the user supplies or explicitly approves. PDF, Markdown, and UTF-8 text are supported:
+
+```bash
+python3 "$SKILL_DIR/scripts/loi.py" paper add \
+  --project <project_id> --file <paper.pdf>
+python3 "$SKILL_DIR/scripts/loi.py" paper analyze \
+  --project <project_id> --paper <paper_id> --model <provider:model>
+```
+
+Analyze at least two papers before gap synthesis. Then develop and challenge candidates:
+
+```bash
+python3 "$SKILL_DIR/scripts/loi.py" gap synthesize \
+  --project <project_id> --count 5 --model <provider:model>
+python3 "$SKILL_DIR/scripts/loi.py" idea generate \
+  --project <project_id> --count 5 --model <provider:model>
+python3 "$SKILL_DIR/scripts/loi.py" idea critique \
+  --project <project_id> --idea <idea_id> \
+  --role strict-reviewer --model <provider:model>
+python3 "$SKILL_DIR/scripts/loi.py" idea revise \
+  --project <project_id> --idea <idea_id> --model <provider:model>
+```
+
+Recommend cross-model critique when the user has access to multiple providers, but never imply that model agreement proves novelty or correctness.
+
+## Require a human gate before Arena
+
+Show the candidate versions and ask the researcher to choose. Never shortlist on the user's behalf unless they explicitly name the versions. Record their decision, then run the frozen snapshots:
+
+```bash
+python3 "$SKILL_DIR/scripts/loi.py" shortlist set \
+  --project <project_id> \
+  --version <version_1> --version <version_2> \
+  --note "<researcher decision>"
+python3 "$SKILL_DIR/scripts/loi.py" arena run \
+  --project <project_id> --rounds 3 --double-judge
+```
+
+The research Arena uses evidence strength, importance, novelty, methodological validity, feasibility, and falsifiability. Explain that Elo is still relative evidence, not a final topic decision.
+
+Export the complete research artifact:
+
+```bash
+python3 "$SKILL_DIR/scripts/loi.py" project report \
+  --project <project_id> --output <research-project.md>
+```
+
+## Run a legacy quick tournament
 
 Preserve the user's goal verbatim unless they ask for rewriting. Use the current defaults when they do not specify tournament settings:
 
@@ -95,7 +161,7 @@ python3 "$SKILL_DIR/scripts/loi.py" resume \
 
 Do not restart from scratch when a resumable Session exists. Pairing plans, pending paid judgments, Elo order, and evolution plans are persisted for deterministic continuation.
 
-## Export the deliverable
+## Export a tournament deliverable
 
 Create a Markdown report after completion or when the user wants an audit of partial results:
 
@@ -111,6 +177,12 @@ Read [references/workflows.md](references/workflows.md) for ready-to-run task pa
 
 ## Guardrails
 
+- Keep paper facts, AI gap hypotheses, and researcher decisions visibly separate.
+- Reject or retry any analysis with source locators or quotes not present in the imported paper.
+- Treat every Gap as a hypothesis requiring validation, never as proof of novelty.
+- Never send an Idea to the research Arena without the user's explicit shortlist decision.
+- Never overwrite an IdeaVersion; use critique followed by revise to create a child version.
+- Do not claim the imported paper set is comprehensive or current unless separately verified.
 - Run `estimate` before `run` unless the user already supplied a strict budget and exact configuration.
 - Never silently remove a budget, lower a deduplication threshold, change a rubric, or switch models during resume.
 - Do not claim `--seed` makes provider outputs deterministic; it fixes pairing and presentation order only.
